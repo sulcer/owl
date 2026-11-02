@@ -1,6 +1,10 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { writeFileAtomic } from "./atomicWrite.ts";
+import type { ReviewKind } from "./shared/reviewKinds.ts";
+
+export type { ReviewKind };
 
 export interface Comment {
 	id: string;
@@ -10,6 +14,7 @@ export interface Comment {
 	start: number;
 	end: number;
 	text: string;
+	kind?: ReviewKind;
 	createdAt: string;
 }
 
@@ -76,6 +81,8 @@ function upsert(comments: Comment[], source: string, draft: CommentDraft): AddRe
 	const existing = comments.find((comment) => isSameAnchor(comment, source, draft));
 	if (existing) {
 		existing.text = draft.text;
+		if (draft.kind) existing.kind = draft.kind;
+		else delete existing.kind;
 		existing.createdAt = createdAt;
 		return "replaced";
 	}
@@ -104,9 +111,5 @@ function isSameAnchor(comment: Comment, source: string, draft: CommentDraft): bo
 
 // ponytail: read-modify-write without a lock, so a CLI add racing a server delete can lose one write; add a lock file if it ever bites
 async function writeComments(gitDir: string, comments: Comment[]): Promise<void> {
-	const dir = commentsDir(gitDir);
-	const temp = join(dir, `${COMMENTS_FILE_NAME}.${process.pid}.tmp`);
-	await mkdir(dir, { recursive: true });
-	await writeFile(temp, JSON.stringify(comments, null, "\t"));
-	await rename(temp, join(dir, COMMENTS_FILE_NAME));
+	await writeFileAtomic(join(commentsDir(gitDir), COMMENTS_FILE_NAME), JSON.stringify(comments, null, "\t"));
 }

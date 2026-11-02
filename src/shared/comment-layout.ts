@@ -1,4 +1,6 @@
 import type { Comment } from "../comments.ts";
+import { REVIEW_KINDS } from "./reviewKinds.ts";
+import type { ReviewKind } from "./reviewKinds.ts";
 import type { Chunk } from "./diff.ts";
 
 export interface CommentGroup {
@@ -44,6 +46,24 @@ export function countByPath(comments: Comment[], source: string): Map<string, nu
 		if (comment.source === source) counts.set(comment.path, (counts.get(comment.path) ?? 0) + 1);
 	}
 	return counts;
+}
+
+export function worstKind(comments: Comment[]): ReviewKind | undefined {
+	const rank = (kind: ReviewKind): number => REVIEW_KINDS.indexOf(kind);
+	return comments.flatMap(({ kind }) => (kind ? [kind] : [])).sort((a, b) => rank(a) - rank(b))[0];
+}
+
+export function worstKindByPath(comments: Comment[], source: string): Map<string, ReviewKind> {
+	const byPath = Map.groupBy(
+		comments.filter((comment) => comment.source === source),
+		(comment) => comment.path
+	);
+	const worst = new Map<string, ReviewKind>();
+	for (const [path, group] of byPath) {
+		const kind = worstKind(group);
+		if (kind) worst.set(path, kind);
+	}
+	return worst;
 }
 
 export function nextCommentIndex(

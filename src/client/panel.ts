@@ -1,4 +1,5 @@
 import type { ChangedFile, FileDetail, Pr, PrInfo, Sources } from "../git.ts";
+import type { ReviewKind } from "../shared/reviewKinds.ts";
 import type { TreeNode } from "../shared/tree.ts";
 
 export interface HeaderInfo {
@@ -8,11 +9,18 @@ export interface HeaderInfo {
 	changeCount: number;
 	fileIndex: number;
 	fileCount: number;
+	overviewOpen: boolean;
+}
+
+export interface OverviewRow {
+	selected: boolean;
+	subtitle: string;
 }
 
 export interface TreeHandlers {
 	onFile: (path: string) => void;
 	onToggle: (folderPath: string) => void;
+	onOverview: () => void;
 }
 
 const INDENT_PX = 14;
@@ -48,12 +56,14 @@ export function renderTree(
 	selectedPath: string | null,
 	collapsed: Set<string>,
 	commentCounts: ReadonlyMap<string, number>,
+	commentKinds: ReadonlyMap<string, ReviewKind>,
+	overview: OverviewRow | null,
 	handlers: TreeHandlers,
 	emptyText: string
 ): void {
-	if (nodes.length === 0) return container.replaceChildren(element("div", "item muted", emptyText));
-	const rows: HTMLElement[] = [];
-	appendRows(rows, nodes, 0, selectedPath, collapsed, commentCounts, handlers);
+	const rows: HTMLElement[] = overview ? [overviewRow(overview, handlers)] : [];
+	if (nodes.length === 0) return container.replaceChildren(...rows, element("div", "item muted", emptyText));
+	appendRows(rows, nodes, 0, selectedPath, collapsed, commentCounts, commentKinds, handlers);
 	container.replaceChildren(...rows);
 	container.querySelector(".selected")?.scrollIntoView({ block: "nearest" });
 }
@@ -61,7 +71,8 @@ export function renderTree(
 export function renderHeader(container: HTMLElement, info: HeaderInfo): void {
 	const { detail, pr } = info;
 	const lines: HTMLElement[] = [];
-	if (detail) lines.push(pathLine(detail, info));
+	if (info.overviewOpen) lines.push(overviewTitleLine());
+	else if (detail) lines.push(pathLine(detail, info));
 	if (pr) lines.push(prLine(pr));
 	container.replaceChildren(...lines);
 }
@@ -116,16 +127,20 @@ function appendRows(
 	selectedPath: string | null,
 	collapsed: Set<string>,
 	commentCounts: ReadonlyMap<string, number>,
+	commentKinds: ReadonlyMap<string, ReviewKind>,
 	handlers: TreeHandlers
 ): void {
 	for (const node of nodes) {
 		if (node.kind === "file") {
-			rows.push(fileRow(node.name, node.file, depth, node.file.path === selectedPath, commentCounts, handlers));
+			rows.push(
+				fileRow(node.name, node.file, depth, node.file.path === selectedPath, commentCounts, commentKinds, handlers)
+			);
 			continue;
 		}
 		const isCollapsed = collapsed.has(node.path);
 		rows.push(folderRow(node.name, node.path, depth, isCollapsed, handlers));
-		if (!isCollapsed) appendRows(rows, node.children, depth + 1, selectedPath, collapsed, commentCounts, handlers);
+		if (!isCollapsed)
+			appendRows(rows, node.children, depth + 1, selectedPath, collapsed, commentCounts, commentKinds, handlers);
 	}
 }
 
@@ -135,14 +150,27 @@ function fileRow(
 	depth: number,
 	selected: boolean,
 	commentCounts: ReadonlyMap<string, number>,
+	commentKinds: ReadonlyMap<string, ReviewKind>,
 	handlers: TreeHandlers
 ): HTMLElement {
 	const row = element("div", `row-tree status-${file.status}${selected ? " selected" : ""}`, name);
 	row.style.paddingLeft = `${8 + depth * INDENT_PX + INDENT_PX}px`;
 	row.title = file.oldPath ? `${file.oldPath} → ${file.path}` : file.path;
 	const count = commentCounts.get(file.path);
-	if (count) row.append(element("span", "comment-count", String(count)));
+	const kind = commentKinds.get(file.path);
+	if (count) row.append(element("span", `comment-count${kind ? ` kind-${kind}` : ""}`, String(count)));
 	row.onclick = () => handlers.onFile(file.path);
+	return row;
+}
+
+function overviewRow(info: OverviewRow, handlers: TreeHandlers): HTMLElement {
+	const row = element("div", `row-tree overview-row${info.selected ? " selected" : ""}`);
+	const icon = document.createElement("img");
+	icon.src = "/client/owl.svg";
+	icon.alt = "";
+	row.append(icon, element("span", "", "Overview"));
+	if (info.subtitle) row.append(element("span", "muted", info.subtitle));
+	row.onclick = handlers.onOverview;
 	return row;
 }
 
@@ -167,6 +195,12 @@ function pathLine(detail: FileDetail, info: HeaderInfo): HTMLElement {
 		element("span", "info", position),
 		element("span", `path status-${detail.status}`, renamed ? `${detail.oldPath} → ${detail.path}` : detail.path)
 	);
+	return line;
+}
+
+function overviewTitleLine(): HTMLElement {
+	const line = element("div", "");
+	line.append(element("strong", "", "Overview"));
 	return line;
 }
 

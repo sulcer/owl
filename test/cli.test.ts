@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import { cpSync, mkdirSync } from "node:fs";
 import { test } from "node:test";
 import { join } from "node:path";
-import { makeTempDir } from "./helpers.ts";
+import { makeTempDir, makeWorkingRepo } from "./helpers.ts";
 
 const CLI = join(import.meta.dirname, "..", "src", "cli.ts");
 
@@ -41,4 +41,27 @@ test("runs from inside node_modules, where Node refuses to strip types", () => {
 	});
 	assert.equal(actual.status, 0);
 	assert.match(actual.stdout, /^usage: owl/);
+});
+
+test("overview writes from stdin, then clears, in a real repo", () => {
+	const repo = makeWorkingRepo();
+	const written = spawnSync("node", ["--disable-warning=ExperimentalWarning", CLI, "overview"], {
+		cwd: repo,
+		input: "<p>hello</p>",
+		encoding: "utf8"
+	});
+	assert.equal(written.stdout, "overview written: working\n");
+	assert.equal(runCli(repo, "overview", "--clear").stdout, "overview cleared: working\n");
+	const again = runCli(repo, "overview", "--clear");
+	assert.equal(again.status, 0);
+	assert.equal(again.stdout, "no overview: working\n");
+});
+
+test("overview with bad args prints usage and exits 1; outside a repo says so", () => {
+	const bad = runCli(makeTempDir(), "overview", "--nope");
+	assert.equal(bad.status, 1);
+	assert.match(bad.stderr, /usage: owl/);
+	const outside = runCli(makeTempDir(), "overview", "--clear");
+	assert.equal(outside.status, 1);
+	assert.equal(outside.stderr, "owl: not a git repository\n");
 });

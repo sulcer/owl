@@ -189,3 +189,34 @@ test("real CLI lists and removes comments", async () => {
 	);
 	assert.equal(read().length, 2);
 });
+
+test("parses --kind on a single comment, wherever the flag sits", () => {
+	const expected = {
+		kind: "add",
+		source: "pr-929",
+		anchor: { path: "src/a.ts", side: "new", start: 3, end: 5 },
+		text: "t",
+		reviewKind: "fix"
+	};
+	assert.deepEqual(parseCommentArgs(["929", "--kind", "fix", "src/a.ts:3-5", "t"]), expected);
+	assert.deepEqual(parseCommentArgs(["929", "src/a.ts:3-5", "t", "--kind", "fix"]), expected);
+});
+
+test("--kind needs a known value and a single comment", () => {
+	assert.throws(() => parseCommentArgs(["--kind", "bad", "a.ts:1", "t"]), /kind must be one of fix, question, nit/);
+	assert.throws(() => parseCommentArgs(["a.ts:1", "t", "--kind"]), /kind must be one of/);
+	for (const mode of ["--batch", "--list", "--remove", "--clear"])
+		assert.throws(() => parseCommentArgs(["--kind", "fix", mode]), /--kind only works with a single comment/);
+});
+
+test("real CLI stores the kind, lists it and rejects a bad one", async () => {
+	const repo = makeWorkingRepo();
+	assert.equal(runCli(repo, undefined, "comment", "--kind", "fix", "mod.txt:2-3", "hi").status, 0);
+	assert.equal(runCli(repo, undefined, "comment", "mod.txt:5", "plain").status, 0);
+	assert.equal(runCli(repo, undefined, "comment", "--list").stdout, "mod.txt:2-3 [fix]  hi\nmod.txt:5  plain\n");
+	assert.equal(runCli(repo, undefined, "comment", "--kind", "bad", "mod.txt:2", "hi").status, 1);
+	const batch = JSON.stringify([{ path: "mod.txt", lines: "1", text: "x", kind: "nope" }]);
+	const bad = runCli(repo, batch, "comment", "--batch");
+	assert.equal(bad.status, 1);
+	assert.match(bad.stderr, /item 0: kind must be one of/);
+});

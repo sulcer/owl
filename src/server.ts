@@ -6,6 +6,7 @@ import type { AddressInfo } from "node:net";
 import { stripTypeScriptTypes } from "node:module";
 import { extname, join, resolve, sep } from "node:path";
 import { COMMENTS_FILE_NAME, commentsDir, deleteComment, readComments } from "./comments.ts";
+import { OVERVIEW_FILE_PATTERN, readOverview } from "./overview.ts";
 import { findGitDir, readFileDetail, readSources, resolveSource } from "./git.ts";
 import type { ResolvedSource } from "./git.ts";
 
@@ -85,17 +86,21 @@ function createLifetime(onIdle: () => void): Lifetime {
 
 async function watchComments(gitDir: string, streams: Set<ServerResponse>): Promise<() => void> {
 	await mkdir(commentsDir(gitDir), { recursive: true });
-	let timer: NodeJS.Timeout | undefined;
-	const notify = (): void => {
-		for (const stream of streams) stream.write("event: comments\ndata: {}\n\n");
+	const timers = new Map<string, NodeJS.Timeout>();
+	const notify = (key: string, message: string): void => {
+		clearTimeout(timers.get(key));
+		const send = (): void => {
+			for (const stream of streams) stream.write(message);
+		};
+		timers.set(key, setTimeout(send, COMMENTS_DEBOUNCE_MS));
 	};
 	const watcher = watch(commentsDir(gitDir), (_event, filename) => {
-		if (filename !== COMMENTS_FILE_NAME) return;
-		clearTimeout(timer);
-		timer = setTimeout(notify, COMMENTS_DEBOUNCE_MS);
+		if (filename === COMMENTS_FILE_NAME) return notify(filename, "event: comments\ndata: {}\n\n");
+		const source = OVERVIEW_FILE_PATTERN.exec(filename ?? "")?.[1];
+		if (source) notify(`overview-${source}`, `event: overview\ndata: ${JSON.stringify({ source })}\n\n`);
 	});
 	const stop = (): void => {
-		clearTimeout(timer);
+		for (const timer of timers.values()) clearTimeout(timer);
 		watcher.close();
 	};
 	watcher.on("error", stop);
@@ -114,6 +119,7 @@ async function route(req: IncomingMessage, res: ServerResponse, context: Context
 	if (pathname.startsWith("/shared/")) return sendStatic(res, insideDir(SHARED_DIR, pathname.slice("/shared/".length)));
 	if (pathname === "/api/events") return openEventStream(req, res, context);
 	if (pathname === "/api/comments") return sendJson(res, 200, { comments: await readComments(context.gitDir) });
+	if (pathname === "/api/overview") return sendOverview(res, context.gitDir, url);
 	if (pathname === "/api/sources") return sendJson(res, 200, await readSources(root));
 	if (pathname === "/api/files") return sendFiles(res, root, url, sources);
 	if (pathname === "/api/file") return sendFile(res, root, url, sources);
@@ -149,6 +155,12 @@ async function sendFile(
 	const file = resolved?.files.find((candidate) => candidate.path === url.searchParams.get("path"));
 	if (!resolved || !file) return sendJson(res, 404, { error: "file not in the list for this source" });
 	sendJson(res, 200, await readFileDetail(root, resolved, file));
+}
+
+async function sendOverview(res: ServerResponse, gitDir: string, url: URL): Promise<void> {
+	const source = url.searchParams.get("source") ?? "";
+	if (!SOURCE_PATTERN.test(source)) return sendJson(res, 400, { error: "bad source" });
+	sendJson(res, 200, { html: await readOverview(gitDir, source) });
 }
 
 async function removeComment(res: ServerResponse, gitDir: string, url: URL): Promise<void> {

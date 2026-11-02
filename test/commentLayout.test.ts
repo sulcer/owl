@@ -9,7 +9,8 @@ import {
 	describeLines,
 	groupByStart,
 	nextCommentIndex,
-	stackCards
+	stackCards,
+	worstKindByPath
 } from "../src/shared/comment-layout.ts";
 
 function comment(id: string, start: number, end = start, path = "a.ts", source = "working"): Comment {
@@ -164,4 +165,29 @@ test("with several overlapping, the lowest new-side start wins, then the old sid
 	const list = [onSide("old", "o", 9), comment("b", 10), comment("a", 5, 10)];
 	assert.equal(commentForChunk(list, modified)?.id, "a");
 	assert.equal(commentForChunk([onSide("old", "o2", 11), onSide("old", "o1", 10)], modified)?.id, "o1");
+});
+
+test("worst kind per path: fix beats question beats nit, explanations add nothing", () => {
+	const kinded = (id: string, path: string, kind?: Comment["kind"], source = "working"): Comment => ({
+		...comment(id, 1, 1, path, source),
+		...(kind ? { kind } : {})
+	});
+	const worst = worstKindByPath(
+		[
+			kinded("a", "a.ts", "nit"),
+			kinded("b", "a.ts", "fix"),
+			kinded("c", "b.ts", "question"),
+			kinded("d", "b.ts", "nit"),
+			kinded("e", "c.ts"),
+			kinded("f", "d.ts", "fix", "branch")
+		],
+		"working"
+	);
+	assert.deepEqual(
+		[...worst],
+		[
+			["a.ts", "fix"],
+			["b.ts", "question"]
+		]
+	);
 });

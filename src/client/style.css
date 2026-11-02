@@ -175,6 +175,29 @@ body {
 	color: #589df6;
 }
 
+#overview {
+	flex: 1;
+	min-height: 0;
+}
+
+#overview iframe {
+	display: block;
+	width: 100%;
+	height: 100%;
+	border: 0;
+}
+
+.overview-row img {
+	width: 14px;
+	height: 14px;
+	margin-right: 6px;
+	vertical-align: -2px;
+}
+
+.overview-row .muted {
+	margin-left: 8px;
+}
+
 #note {
 	flex: 1;
 	padding: 24px;
@@ -403,6 +426,10 @@ body {
 	padding: 0 8px 6px;
 }
 
+.body .review-title {
+	display: block;
+}
+
 .body p,
 .body ul,
 .body ol {
@@ -436,6 +463,65 @@ body {
 	padding: 0;
 	background: none;
 	white-space: pre;
+}
+
+.card.kind-fix {
+	border-color: #e06c6c;
+}
+
+.card.kind-question {
+	border-color: #6f9be8;
+}
+
+.card.kind-nit {
+	border-color: #8c8c8c;
+}
+
+.entry.kind-fix {
+	box-shadow: inset 3px 0 0 #e06c6c;
+}
+
+.entry.kind-question {
+	box-shadow: inset 3px 0 0 #6f9be8;
+}
+
+.entry.kind-nit {
+	box-shadow: inset 3px 0 0 #8c8c8c;
+}
+
+.kind-tag {
+	padding: 0 5px;
+	border-radius: 3px;
+	font-size: 10px;
+	font-weight: 700;
+	text-transform: uppercase;
+}
+
+.entry.kind-fix .kind-tag {
+	background: #5b2f2f;
+	color: #f0b3b3;
+}
+
+.entry.kind-question .kind-tag {
+	background: #2a3550;
+	color: #b7c7ee;
+}
+
+.entry.kind-nit .kind-tag {
+	background: #3a3d3f;
+	color: #a8a8a8;
+}
+
+.comment-count.kind-fix {
+	background: #e06c6c;
+}
+
+.comment-count.kind-question {
+	background: #6f9be8;
+}
+
+.comment-count.kind-nit {
+	background: #8c8c8c;
 }
 
 .comment-count {

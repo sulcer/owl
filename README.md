@@ -53,6 +53,7 @@ Use `--no-open` to only print the URL without opening a window. The local server
 | `J` / `K`        | next / previous view in the source list   |
 | `/`              | filter files; `Enter` opens, `Esc` closes |
 | `]` / `[`        | next / previous comment                   |
+| `o`              | switch between the overview and a file    |
 | `c`              | show or hide comment cards                |
 | `v`              | switch comment style (side / inline)      |
 | `r`              | reload                                    |
@@ -67,6 +68,7 @@ Drag the edges to resize the sidebar, the split between the source list and the 
 ```bash
 owl comment 627 src/rates/mapper.ts:52-58 "Why this changed, in two sentences."
 owl comment 627 src/rates/mapper.ts:52-58 - < note.md       # longer text from stdin
+owl comment 627 --kind fix src/rates/mapper.ts:52-58 - < note.md   # a review note
 owl comment 627 --batch < walkthrough.json                 # many at once
 owl comment 627 --list                                      # what is there
 owl comment 627 --remove src/rates/mapper.ts:52-58          # remove one
@@ -79,8 +81,25 @@ Use `--branch` instead of a PR number for the branch view, or neither for workin
 - Commenting the exact same lines again replaces the text and keeps its place.
 - `--batch` reads a JSON array of `{"path", "lines", "old"?, "text"}` items; if one item is bad, nothing is added. The array order is the reading order for `]` and `[`.
 - Text can use a little Markdown: `code`, **bold**, lists and fenced code blocks.
+- `--kind fix`, `--kind question` or `--kind nit` makes a comment a review note (`"kind"` in a batch item). It gets a colored tag, its first line shows as a title, and it also shows inline in the [overview page](#overview-page). Comments without a kind are plain explanations.
 
 Comments are stored in `.git/owl/comments.json` (one file per worktree). They are never committed or sent anywhere. An open window shows new comments within a second.
+
+## Overview page
+
+An agent can also explain a whole change as one page with pictures: why it exists, the flow before and after, the key idea, where it sits in a stack. owl shows it as the first row of the file tree and opens it first. `o` switches between the page and the last file.
+
+```bash
+owl overview 627 < page.html    # write or replace (also --branch, or nothing for working changes)
+owl overview 627 --clear        # remove
+```
+
+- The page is an HTML fragment, at most 300 KB. owl wraps it in its own stylesheet, which gives boxes, arrows, before/after lanes, cards and figure classes. Agents draw anything else as inline SVG.
+- Any element with `data-at="path:12-20"` (add `data-old` for the old side) links to those lines in the diff. A link to a file outside the view is dimmed.
+- Review notes appear inside the page, under the part they are about: under the link whose lines they overlap, else near a link to the same file, else in "Other review notes" at the end. A line under the intro counts them, and `]` / `[` step through them.
+- The page runs in a sandboxed frame with scripts, forms and popups off, so agent HTML can't run code. Links to `http` pages open in your browser.
+
+Pages are stored next to the comments, as `.git/owl/overview-<view>.html`. The classes a page can use are in `src/client/overview.css`.
 
 `owl --help` prints all the forms.
 

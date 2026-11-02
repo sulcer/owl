@@ -4,6 +4,7 @@ import { request } from "node:http";
 import { dirname, join } from "node:path";
 import { after, before, test } from "node:test";
 import { addComments, readComments } from "../src/comments.ts";
+import { writeOverview } from "../src/overview.ts";
 import { findGitDir } from "../src/git.ts";
 import { startServer } from "../src/server.ts";
 import type { RunningServer } from "../src/server.ts";
@@ -173,4 +174,36 @@ test("a comment write sends event: comments on the event stream", async () => {
 		setTimeout(() => addComments(gitDir, "working", [{ ...SAMPLE, start: 77, end: 77 }]), 100);
 	});
 	assert.match(await received, /event: comments\ndata: \{\}\n\n/);
+});
+
+test("GET /api/overview returns the page, null when missing, 400 for a bad source", async () => {
+	await writeOverview(gitDir, "pr-9", "<p>page</p>");
+	assert.deepEqual(JSON.parse((await get("/api/overview?source=pr-9")).body), { html: "<p>page</p>" });
+	assert.deepEqual(JSON.parse((await get("/api/overview?source=pr-8")).body), { html: null });
+	assert.equal((await get("/api/overview?source=../x")).status, 400);
+	assert.equal((await get("/api/overview")).status, 400);
+});
+
+test("overview and comment writes each send their own event", async () => {
+	const received = new Promise<string>((done, fail) => {
+		let seen = "";
+		const req = request({ host: "127.0.0.1", port: running.port, path: "/api/events" }, (res) => {
+			res.on("data", (chunk: Buffer) => {
+				seen += chunk.toString();
+				if (seen.includes(`"source":"branch"`) && seen.includes("event: comments")) {
+					req.destroy();
+					done(seen);
+				}
+			});
+		});
+		req.on("error", fail);
+		req.end();
+		setTimeout(() => {
+			void writeOverview(gitDir, "branch", "<p>x</p>");
+			void addComments(gitDir, "working", [{ ...SAMPLE, start: 78, end: 78 }]);
+		}, 100);
+	});
+	const actual = await received;
+	assert.match(actual, /event: overview\ndata: \{"source":"branch"\}\n\n/);
+	assert.match(actual, /event: comments\ndata: \{\}\n\n/);
 });

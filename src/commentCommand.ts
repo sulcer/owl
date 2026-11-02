@@ -1,8 +1,9 @@
+import { REVIEW_KINDS } from "./shared/reviewKinds.ts";
 import { addComments, clearComments, readComments, removeComments } from "./comments.ts";
-import type { Comment, CommentDraft, CommentMatch } from "./comments.ts";
+import type { Comment, CommentDraft, CommentMatch, ReviewKind } from "./comments.ts";
 
 export type CommentCommand =
-	| { kind: "add"; source: string; anchor: Anchor; text: string }
+	| { kind: "add"; source: string; anchor: Anchor; text: string; reviewKind?: ReviewKind }
 	| { kind: "batch"; source: string }
 	| { kind: "list"; source: string }
 	| { kind: "remove"; source: string; match: CommentMatch }
@@ -17,16 +18,32 @@ const PR_PATTERN = /^\d{1,7}$/;
 const LINES_PATTERN = /^(\d+)(?:-(\d+))?$/;
 const MAX_TEXT_CHARS = 20_000;
 
-export function parseCommentArgs(args: string[]): CommentCommand {
+export function parseCommentArgs(rawArgs: string[]): CommentCommand {
+	const { args, reviewKind } = extractKind(rawArgs);
 	const flags = new Set(args.filter((arg) => FLAGS.has(arg)));
 	const positional = args.filter((arg) => !FLAGS.has(arg));
 	if (MODE_FLAGS.filter((flag) => flags.has(flag)).length > 1)
 		throw new Error(`use only one of ${MODE_FLAGS.join(", ")}`);
+	if (reviewKind && MODE_FLAGS.some((flag) => flags.has(flag)))
+		throw new Error("--kind only works with a single comment");
 	if (flags.has("--all") && !flags.has("--clear")) throw new Error("--all only works with --clear");
 	if (flags.has("--clear") && flags.has("--all")) return parseClearAll(flags, positional);
 	if (flags.has("--remove")) return parseRemove(flags, positional);
 	if (MODE_FLAGS.some((flag) => flags.has(flag))) return parseSourceOnly(flags, positional);
-	return parseAdd(flags, positional);
+	return parseAdd(flags, positional, reviewKind);
+}
+
+function extractKind(rawArgs: string[]): { args: string[]; reviewKind?: ReviewKind } {
+	const index = rawArgs.indexOf("--kind");
+	if (index === -1) return { args: rawArgs };
+	const reviewKind = parseKind(rawArgs[index + 1]);
+	return { args: rawArgs.filter((_, i) => i !== index && i !== index + 1), reviewKind };
+}
+
+function parseKind(value: unknown): ReviewKind {
+	const kind = REVIEW_KINDS.find((candidate) => candidate === value);
+	if (!kind) throw new Error(`kind must be one of ${REVIEW_KINDS.join(", ")}`);
+	return kind;
 }
 
 export function parseBatch(input: string): CommentDraft[] {
@@ -52,7 +69,8 @@ export async function runComment(command: CommentCommand, gitDir: string): Promi
 	if (command.kind === "remove") return runRemove(command.source, command.match, gitDir);
 	if (command.kind === "batch") return runBatch(command.source, gitDir);
 	const text = parseText(command.text === "-" ? await readStdin() : command.text);
-	const [result] = await addComments(gitDir, command.source, [{ ...command.anchor, text }]);
+	const kind = command.reviewKind ? { kind: command.reviewKind } : {};
+	const [result] = await addComments(gitDir, command.source, [{ ...command.anchor, text, ...kind }]);
 	return `comment ${result}: ${command.source} ${command.anchor.path}:${formatLines(command.anchor)}`;
 }
 
@@ -83,7 +101,7 @@ function parseRemove(flags: Set<string>, positional: string[]): CommentCommand {
 	return { kind: "remove", source, match: { path, side, start, end } };
 }
 
-function parseAdd(flags: Set<string>, positional: string[]): CommentCommand {
+function parseAdd(flags: Set<string>, positional: string[], reviewKind?: ReviewKind): CommentCommand {
 	if (positional.length < 2 || positional.length > 3) throw new Error("expected <path>:<line>[-<end>] <text>");
 	const source = parseSource(flags, positional.length === 3 ? positional[0] : undefined);
 	const [target, text] = positional.slice(-2);
@@ -91,10 +109,10 @@ function parseAdd(flags: Set<string>, positional: string[]): CommentCommand {
 	if (split === -1) throw new Error(`expected <path>:<line>[-<end>], got ${target}`);
 	const anchor = parseAnchor(target.slice(0, split), target.slice(split + 1), flags.has("--old"));
 	if (text !== "-") parseText(text);
-	return { kind: "add", source, anchor, text };
+	return reviewKind ? { kind: "add", source, anchor, text, reviewKind } : { kind: "add", source, anchor, text };
 }
 
-function parseSource(flags: Set<string>, pr: string | undefined): string {
+export function parseSource(flags: Set<string>, pr: string | undefined): string {
 	if (flags.has("--branch") && pr !== undefined) throw new Error("use either --branch or a PR number, not both");
 	if (pr !== undefined) {
 		if (!PR_PATTERN.test(pr)) throw new Error(`bad PR number: ${pr}`);
@@ -105,12 +123,13 @@ function parseSource(flags: Set<string>, pr: string | undefined): string {
 
 function parseBatchItem(item: unknown): CommentDraft {
 	if (typeof item !== "object" || item === null) throw new Error("must be an object");
-	const { path, lines, old, text } = item as Record<string, unknown>;
+	const { path, lines, old, text, kind } = item as Record<string, unknown>;
 	if (typeof path !== "string") throw new Error("path must be a string");
 	if (typeof lines !== "string") throw new Error('lines must be a string like "7" or "7-10"');
 	if (old !== undefined && typeof old !== "boolean") throw new Error("old must be true or false");
 	if (typeof text !== "string") throw new Error("text must be a string");
-	return { ...parseAnchor(path, lines, old === true), text: parseText(text) };
+	const draft = { ...parseAnchor(path, lines, old === true), text: parseText(text) };
+	return kind === undefined ? draft : { ...draft, kind: parseKind(kind) };
 }
 
 function parsePath(rawPath: string): string {
@@ -148,7 +167,8 @@ async function runList(source: string, gitDir: string): Promise<string> {
 function formatListLine(comment: Comment): string {
 	const side = comment.side === "old" ? " (old)" : "";
 	const firstLine = comment.text.split("\n")[0].slice(0, MAX_LIST_TEXT_CHARS);
-	return `${comment.path}:${formatLines(comment)}${side}  ${firstLine}`;
+	const kind = comment.kind ? ` [${comment.kind}]` : "";
+	return `${comment.path}:${formatLines(comment)}${side}${kind}  ${firstLine}`;
 }
 
 async function runRemove(source: string, match: CommentMatch, gitDir: string): Promise<string> {
@@ -177,7 +197,7 @@ function formatLines({ start, end }: { start: number; end: number }): string {
 	return start === end ? String(start) : `${start}-${end}`;
 }
 
-async function readStdin(): Promise<string> {
+export async function readStdin(): Promise<string> {
 	let input = "";
 	for await (const chunk of process.stdin) input += chunk;
 	return input;

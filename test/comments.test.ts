@@ -1,8 +1,16 @@
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { test } from "node:test";
 import { join } from "node:path";
-import { addComments, clearComments, deleteComment, readComments, removeComments } from "../src/comments.ts";
+import {
+	COMMENTS_FILE_NAME,
+	addComments,
+	clearComments,
+	commentsDir,
+	deleteComment,
+	readComments,
+	removeComments
+} from "../src/comments.ts";
 import type { CommentDraft } from "../src/comments.ts";
 import { parseBatch } from "../src/commentCommand.ts";
 import { commitAll, git, makeTempDir, makeWorkingRepo } from "./helpers.ts";
@@ -132,4 +140,53 @@ test("removeComments matches exact range, or path on one or both sides, within o
 		(await readComments(gitDir)).map((comment) => comment.text),
 		["b", "other source"]
 	);
+});
+
+test("batch items take an optional kind and a bad one names the item", () => {
+	const actual = parseBatch(
+		JSON.stringify([
+			{ path: "a.ts", lines: "1", text: "x", kind: "question" },
+			{ path: "a.ts", lines: "2", text: "y" }
+		])
+	);
+	assert.deepEqual(
+		actual.map((item) => item.kind),
+		["question", undefined]
+	);
+	const bad = JSON.stringify([
+		{ path: "a.ts", lines: "1", text: "x", kind: "nit" },
+		{ path: "a.ts", lines: "1", text: "x", kind: "urgent" }
+	]);
+	assert.throws(() => parseBatch(bad), /^Error: item 1: kind must be one of/);
+});
+
+test("upsert sets, replaces and removes the kind", async () => {
+	const gitDir = makeTempDir();
+	const kinds = async () => (await readComments(gitDir)).map((comment) => comment.kind);
+	await addComments(gitDir, "working", [draft("a.ts", 5, "one")]);
+	assert.deepEqual(await kinds(), [undefined]);
+	await addComments(gitDir, "working", [{ ...draft("a.ts", 5, "two"), kind: "fix" }]);
+	assert.deepEqual(await kinds(), ["fix"]);
+	await addComments(gitDir, "working", [{ ...draft("a.ts", 5, "three"), kind: "nit" }]);
+	assert.deepEqual(await kinds(), ["nit"]);
+	await addComments(gitDir, "working", [draft("a.ts", 5, "four")]);
+	const [actual] = await readComments(gitDir);
+	assert.equal("kind" in actual, false);
+});
+
+test("a comment on disk without a kind still loads", async () => {
+	const gitDir = makeTempDir();
+	mkdirSync(commentsDir(gitDir), { recursive: true });
+	const old = {
+		id: "1",
+		source: "working",
+		path: "a.ts",
+		side: "new",
+		start: 1,
+		end: 1,
+		text: "t",
+		createdAt: "2026-01-01T00:00:00Z"
+	};
+	writeFileSync(join(commentsDir(gitDir), COMMENTS_FILE_NAME), JSON.stringify([old]));
+	assert.deepEqual(await readComments(gitDir), [old]);
 });

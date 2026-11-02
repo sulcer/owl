@@ -1,16 +1,20 @@
 #!/usr/bin/env -S node --disable-warning=ExperimentalWarning
 import { spawn } from "node:child_process";
 import { parseCommentArgs, runComment } from "./commentCommand.ts";
+import { parseOverviewArgs, runOverview } from "./overviewCommand.ts";
 import { findGitDir, findRepoRoot } from "./git.ts";
 import { startServer } from "./server.ts";
 
 const USAGE = `usage: owl [--branch | <pr-number>] [--no-open]
        owl comment [--branch | <pr>] [--old] <path>:<line>[-<end>] <text | ->
+       owl comment [--branch | <pr>] [--old] --kind <fix|question|nit> <path>:<line>[-<end>] <text | ->
        owl comment [--branch | <pr>] --batch      (JSON array on stdin)
        owl comment [--branch | <pr>] --list
        owl comment [--branch | <pr>] [--old] --remove <path>[:<line>[-<end>]]
        owl comment [--branch | <pr>] --clear
        owl comment --clear --all
+       owl overview [--branch | <pr>]             (HTML page on stdin)
+       owl overview [--branch | <pr>] --clear
 `;
 
 interface Options {
@@ -42,17 +46,21 @@ function fail(message: string): never {
 	process.exit(1);
 }
 
-async function runCommentCommand(args: string[]): Promise<void> {
-	let command;
+async function runGitCommand<T>(
+	parse: (args: string[]) => T,
+	run: (command: T, gitDir: string) => Promise<string>,
+	args: string[]
+): Promise<void> {
+	let command: T;
 	try {
-		command = parseCommentArgs(args);
+		command = parse(args);
 	} catch (error) {
 		fail(`owl: ${(error as Error).message}\n${USAGE}`);
 	}
 	const gitDir = await findGitDir(process.cwd());
 	if (gitDir === null) fail("owl: not a git repository\n");
 	try {
-		process.stdout.write(`${await runComment(command, gitDir)}\n`);
+		process.stdout.write(`${await run(command, gitDir)}\n`);
 	} catch (error) {
 		fail(`owl: ${(error as Error).message}\n`);
 	}
@@ -61,7 +69,8 @@ async function runCommentCommand(args: string[]): Promise<void> {
 async function main(): Promise<void> {
 	const args = process.argv.slice(2);
 	if (args.includes("--help")) return void process.stdout.write(USAGE);
-	if (args[0] === "comment") return runCommentCommand(args.slice(1));
+	if (args[0] === "comment") return runGitCommand(parseCommentArgs, runComment, args.slice(1));
+	if (args[0] === "overview") return runGitCommand(parseOverviewArgs, runOverview, args.slice(1));
 	const options = parseArgs(args);
 	if (options === null) {
 		process.stderr.write(USAGE);

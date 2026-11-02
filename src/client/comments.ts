@@ -1,7 +1,9 @@
 import type { Comment } from "../comments.ts";
-import { barLines, describeLines, groupByStart, stackCards } from "../shared/comment-layout.ts";
+import { barLines, describeLines, groupByStart, stackCards, worstKind } from "../shared/comment-layout.ts";
 import type { CommentGroup } from "../shared/comment-layout.ts";
+import { splitReviewText } from "../shared/reviewText.ts";
 import { renderMarkdown } from "../shared/markdown.ts";
+import type { ReviewKind } from "../shared/reviewKinds.ts";
 import type { Side } from "../shared/scroll.ts";
 import { LINE_HEIGHT } from "./diff-view.ts";
 import { highlightCodeBlocks } from "./highlight.ts";
@@ -195,6 +197,8 @@ function drawMarkers(
 function createCard(group: CommentGroup, lineCount: number, onClose: (group: CommentGroup) => void): Card {
 	const card = document.createElement("div");
 	card.className = "card";
+	const kind = worstKind(group.comments);
+	if (kind) card.classList.add(`kind-${kind}`);
 	card.append(...group.comments.map((comment) => createEntry(comment, () => onClose(group))));
 	const endLine = Math.min(Math.max(...group.comments.map((comment) => comment.end)), lineCount);
 	const connector = document.createElement("div");
@@ -204,23 +208,41 @@ function createCard(group: CommentGroup, lineCount: number, onClose: (group: Com
 
 function createEntry(comment: Comment, onClose: () => void): HTMLElement {
 	const entry = document.createElement("div");
-	entry.className = "entry";
+	entry.className = comment.kind ? `entry kind-${comment.kind}` : "entry";
 	const head = document.createElement("div");
 	head.className = "head";
 	const label = document.createElement("span");
-	label.textContent = `agent · ${formatAge(comment.createdAt)} · ${describeLines(comment)}`;
+	label.append(`agent · ${formatAge(comment.createdAt)} · ${describeLines(comment)}`);
 	const remove = document.createElement("button");
 	remove.className = "del";
 	remove.title = "close";
 	remove.textContent = "×";
 	remove.onclick = onClose;
+	if (comment.kind) label.prepend(createKindTag(comment.kind), " ");
 	head.append(label, remove);
 	const body = document.createElement("div");
 	body.className = "body";
-	body.innerHTML = renderMarkdown(comment.text);
+	if (comment.kind) fillReviewBody(body, comment.text);
+	else body.innerHTML = renderMarkdown(comment.text);
 	highlightCodeBlocks(body);
 	entry.append(head, body);
 	return entry;
+}
+
+function fillReviewBody(body: HTMLElement, text: string): void {
+	const { title, body: rest } = splitReviewText(text);
+	const heading = document.createElement("strong");
+	heading.className = "review-title";
+	heading.textContent = title;
+	body.append(heading);
+	body.insertAdjacentHTML("beforeend", renderMarkdown(rest));
+}
+
+function createKindTag(kind: ReviewKind): HTMLElement {
+	const tag = document.createElement("span");
+	tag.className = "kind-tag";
+	tag.textContent = kind;
+	return tag;
 }
 
 function layoutSide(
