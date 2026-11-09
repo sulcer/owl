@@ -1,7 +1,9 @@
 #!/usr/bin/env -S node --disable-warning=ExperimentalWarning
 import { spawn } from "node:child_process";
 import { parseCommentArgs, runComment } from "./commentCommand.ts";
-import { parseOverviewArgs, runOverview } from "./overviewCommand.ts";
+import { parseViewArgs } from "./viewArgs.ts";
+import { runGuide } from "./guideCommand.ts";
+import { runOverview } from "./overviewCommand.ts";
 import { findGitDir, findRepoRoot } from "./git.ts";
 import { startServer } from "./server.ts";
 
@@ -15,6 +17,8 @@ const USAGE = `usage: owl [--branch | <pr-number>] [--no-open]
        owl comment --clear --all
        owl overview [--branch | <pr>]             (HTML page on stdin)
        owl overview [--branch | <pr>] --clear
+       owl guide [--branch | <pr>]                (review guide JSON on stdin)
+       owl guide [--branch | <pr>] --clear
 `;
 
 interface Options {
@@ -70,7 +74,8 @@ async function main(): Promise<void> {
 	const args = process.argv.slice(2);
 	if (args.includes("--help")) return void process.stdout.write(USAGE);
 	if (args[0] === "comment") return runGitCommand(parseCommentArgs, runComment, args.slice(1));
-	if (args[0] === "overview") return runGitCommand(parseOverviewArgs, runOverview, args.slice(1));
+	if (args[0] === "overview") return runGitCommand(parseViewArgs, runOverview, args.slice(1));
+	if (args[0] === "guide") return runGitCommand(parseViewArgs, runGuide, args.slice(1));
 	const options = parseArgs(args);
 	if (options === null) {
 		process.stderr.write(USAGE);

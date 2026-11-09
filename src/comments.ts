@@ -32,6 +32,14 @@ export type AddResult = "added" | "replaced";
 export const COMMENTS_DIR_NAME = "owl";
 export const COMMENTS_FILE_NAME = "comments.json";
 
+export function parsePath(rawPath: string): string {
+	const path = rawPath.startsWith("./") ? rawPath.slice(2) : rawPath;
+	if (path === "") throw new Error("path is empty");
+	if (path.startsWith("/")) throw new Error(`path must be relative: ${path}`);
+	if (path.split("/").includes("..")) throw new Error(`path must not contain "..": ${path}`);
+	return path;
+}
+
 export function commentsDir(gitDir: string): string {
 	return join(gitDir, COMMENTS_DIR_NAME);
 }

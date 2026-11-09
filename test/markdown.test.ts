@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { renderMarkdown } from "../src/shared/markdown.ts";
+import { renderInlineMarkdown, renderMarkdown } from "../src/shared/markdown.ts";
 
 test("html in the text comes out inert", () => {
 	const actual = renderMarkdown(`<script>alert("x")</script> & 'y'`);
@@ -31,4 +31,11 @@ test("paragraphs split on blank lines and single newlines become br", () => {
 
 test("a list after a paragraph starts its own block", () => {
 	assert.equal(renderMarkdown("intro\n- a"), "<p>intro</p><ul><li>a</li></ul>");
+});
+
+test("inline markdown keeps code and bold, escapes html, and adds no paragraph", () => {
+	assert.equal(
+		renderInlineMarkdown("Why a `failed` <b> is **odd**"),
+		"Why a <code>failed</code> &lt;b&gt; is <strong>odd</strong>"
+	);
 });

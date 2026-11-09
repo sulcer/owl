@@ -5,7 +5,9 @@
 		<title>owl</title>
 		<link rel="icon" type="image/svg+xml" href="/client/owl.svg" />
 		<link rel="stylesheet" href="/client/vendor/theme.css" />
+		<link rel="stylesheet" href="/client/components.css" />
 		<link rel="stylesheet" href="/client/style.css" />
+		<link rel="stylesheet" href="/client/guide.css" />
 	</head>
 	<body>
 		<aside id="left">
@@ -20,6 +22,7 @@
 		<main id="main">
 			<header id="header"></header>
 			<div id="overview" hidden></div>
+			<div id="guide" hidden></div>
 			<div id="note" hidden></div>
 			<div id="panes">
 				<div class="pane" id="oldPane"></div>
@@ -39,6 +42,12 @@
 				<dd>next / previous item in the top list</dd>
 				<dt>o</dt>
 				<dd>switch between the overview and the last file</dd>
+				<dt>g</dt>
+				<dd>switch between the review guide and the last file</dd>
+				<dt>j / k in the guide</dt>
+				<dd>next / previous stop</dd>
+				<dt>y in the guide</dt>
+				<dd>copy the stop as a prompt for an agent</dd>
 				<dt>/</dt>
 				<dd>filter files (Enter opens, Esc closes)</dd>
 				<dt>c</dt>

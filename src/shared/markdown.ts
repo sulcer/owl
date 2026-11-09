@@ -37,7 +37,11 @@ export function renderMarkdown(text: string): string {
 	return out.join("");
 }
 
-function escapeHtml(text: string): string {
+export function renderInlineMarkdown(text: string): string {
+	return renderInline(escapeHtml(text));
+}
+
+export function escapeHtml(text: string): string {
 	return text
 		.replace(/&/g, "&amp;")
 		.replace(/</g, "&lt;")

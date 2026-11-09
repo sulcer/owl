@@ -1,3 +1,5 @@
+import type { Side } from "./scroll.ts";
+
 export type ChunkKind = "added" | "deleted" | "modified";
 export type WordRange = [line: number, fromCol: number, toCol: number];
 
@@ -17,6 +19,19 @@ const HUNK_HEADER = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/;
 const TOKEN = /\w+|[^\S\n]+|\n|[^\w\s]/g;
 const MAX_WORD_DIFF_LINES = 200;
 const MAX_LCS_CELLS = 1_000_000;
+
+export function lineCount(text: string): number {
+	if (text === "") return 0;
+	const parts = text.split("\n").length;
+	return text.endsWith("\n") ? parts - 1 : parts;
+}
+
+// Lines start-end (1-based) on one side touch a chunk when they overlap it, or sit next to a pure insertion
+// or deletion there, which takes no lines on that side.
+export function touchesChunk(chunk: Chunk, side: Side, start: number, end: number): boolean {
+	const [first, last] = side === "new" ? [chunk.newStart, chunk.newEnd] : [chunk.oldStart, chunk.oldEnd];
+	return start <= Math.max(last, first + 1) && end >= first + 1;
+}
 
 export function parseHunks(diff: string): Chunk[] {
 	const chunks: Chunk[] = [];

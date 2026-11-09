@@ -4,7 +4,7 @@
 
 A small, read-only diff viewer for git. It shows your uncommitted changes, your branch, or an open pull request side by side, in the style of WebStorm's diff view: no blank filler rows, bands that connect each change across the two sides, one file at a time, and keyboard navigation.
 
-owl never changes your repo. It has no buttons for commit, stage or review. You read the code in owl and do the rest in your terminal or with your coding agent. An agent can also leave notes on the code that owl shows as cards (see [Agent comments](#agent-comments)).
+owl never changes your repo. It has no buttons for commit, stage or review. You read the code in owl and do the rest in your terminal or with your coding agent. An agent can also leave notes on the code that owl shows as cards (see [Agent comments](#agent-comments)), and a guided tour of the change (see [Review guide](#review-guide)).
 
 ## Requirements
 
@@ -45,19 +45,22 @@ Use `--no-open` to only print the URL without opening a window. The local server
 
 ## Keys
 
-| Key              | Action                                    |
-| ---------------- | ----------------------------------------- |
-| `n` / `F7`       | next change                               |
-| `p` / `Shift+F7` | previous change                           |
-| `j` / `k`        | next / previous file                      |
-| `J` / `K`        | next / previous view in the source list   |
-| `/`              | filter files; `Enter` opens, `Esc` closes |
-| `]` / `[`        | next / previous comment                   |
-| `o`              | switch between the overview and a file    |
-| `c`              | show or hide comment cards                |
-| `v`              | switch comment style (side / inline)      |
-| `r`              | reload                                    |
-| `?`              | show all keys                             |
+| Key              | Action                                     |
+| ---------------- | ------------------------------------------ |
+| `n` / `F7`       | next change                                |
+| `p` / `Shift+F7` | previous change                            |
+| `j` / `k`        | next / previous file                       |
+| `J` / `K`        | next / previous view in the source list    |
+| `/`              | filter files; `Enter` opens, `Esc` closes  |
+| `]` / `[`        | next / previous comment                    |
+| `o`              | switch between the overview and a file     |
+| `g`              | switch between the review guide and a file |
+| `j` / `k`        | in the guide: next / previous stop         |
+| `y`              | in the guide: copy the stop as a prompt    |
+| `c`              | show or hide comment cards                 |
+| `v`              | switch comment style (side / inline)       |
+| `r`              | reload                                     |
+| `?`              | show all keys                              |
 
 Drag the edges to resize the sidebar, the split between the source list and the file tree, and the old/new split (the band strip in the middle). Double-click a handle to reset it.
 
@@ -99,7 +102,44 @@ owl overview 627 --clear        # remove
 - Review notes appear inside the page, under the part they are about: under the link whose lines they overlap, else near a link to the same file, else in "Other review notes" at the end. A line under the intro counts them, and `]` / `[` step through them.
 - The page runs in a sandboxed frame with scripts, forms and popups off, so agent HTML can't run code. Links to `http` pages open in your browser.
 
-Pages are stored next to the comments, as `.git/owl/overview-<view>.html`. The classes a page can use are in `src/client/overview.css`.
+Pages are stored next to the comments, as `.git/owl/overview-<view>.html`. The classes a page can use are in `src/client/overview.css` and `src/client/components.css`.
+
+## Review guide
+
+A review guide is a tour of a change in reading order: a few stops, each with a summary, the lines to read, and the calls only a maintainer can make. owl shows it as a "Guide" row in the file tree, after the overview, with its stops listed under it; the current stop fills the main area, centered like the overview page. The shape is the one [T3 Code](https://github.com/pingdotgg/t3code) writes, so a T3 guide loads as it is.
+
+```bash
+owl guide 627 < guide.json     # write or replace (also --branch, or nothing for working changes)
+owl guide 627 --clear          # remove
+```
+
+The input is a JSON object (or a T3 `read_pull_request_guide` result, whose `guide` owl takes):
+
+```json
+{
+	"headSha": "51836f2a9c0d4e1b8f7a6c5d4e3b2a1f0e9d8c7b",
+	"stops": [
+		{
+			"title": "The parser refuses bad lines",
+			"summary": "Markdown: `code`, **bold**, lists.",
+			"attention": { "kind": "risk", "note": "Callers now see fewer rows." },
+			"excerpts": [{ "path": "src/rates.ts", "side": "new", "start": 6, "end": 11, "caption": "The check" }],
+			"files": [{ "path": "README.md", "note": "One sentence" }],
+			"notes": [{ "path": "src/rates.ts", "line": 9, "title": "Empty currency", "body": "It is falsy." }],
+			"questions": ["Should a bad line be reported?"]
+		}
+	]
+}
+```
+
+- `headSha` is the commit the guide describes: the PR head, or `HEAD` for the branch and working views. A 7-character prefix is enough.
+- `attention` is `null` or one of `tradeoff`, `contract`, `product`, `risk`, `accessibility` with a note. Such a stop is marked "Look closely".
+- An excerpt is a line range on the `new` or `old` side. owl draws those lines from the whole file, with the removed or added lines of each change next to them, and a click on a line number opens the file there.
+- `notes` are line notes. They show as lettered marks in the stop and as cards in the file view. `files` lists files the stop names without an excerpt, with their +/- counts. Changed files that no stop names are listed under "Not on the tour".
+- When `headSha` is the view's head, owl checks the guide against the diff: every path is in the view, each excerpt is inside the file and touches a change, each note line is inside the file (binary and very large files are checked for their path only). Any error rejects the whole guide. A guide for another commit is written without that check and shows as stale: a banner, and excerpts that no longer match are hidden.
+- "Copy stop" (or `y`) puts the stop on the clipboard as a prompt for your agent: its text, excerpts as diffs, notes and questions. Nothing is posted anywhere.
+
+Guides are stored as `.git/owl/guide-<view>.json`. Which stops you have read is kept in the browser.
 
 `owl --help` prints all the forms.
 

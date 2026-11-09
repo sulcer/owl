@@ -1,4 +1,5 @@
 import { splitHighlightedLines } from "../shared/htmlLines.ts";
+import { escapeHtml } from "../shared/markdown.ts";
 
 declare const hljs: {
 	getLanguage(name: string): unknown;
@@ -31,8 +32,4 @@ function languageFor(path: string): string | null {
 	const name = path.split("/").pop()?.toLowerCase() ?? "";
 	const candidate = name.includes(".") ? name.slice(name.lastIndexOf(".") + 1) : name;
 	return hljs.getLanguage(candidate) ? candidate : null;
-}
-
-function escapeHtml(text: string): string {
-	return text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }

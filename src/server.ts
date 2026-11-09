@@ -6,6 +6,7 @@ import type { AddressInfo } from "node:net";
 import { stripTypeScriptTypes } from "node:module";
 import { extname, join, resolve, sep } from "node:path";
 import { COMMENTS_FILE_NAME, commentsDir, deleteComment, readComments } from "./comments.ts";
+import { GUIDE_FILE_PATTERN, readGuide } from "./guide.ts";
 import { OVERVIEW_FILE_PATTERN, readOverview } from "./overview.ts";
 import { findGitDir, readFileDetail, readSources, resolveSource } from "./git.ts";
 import type { ResolvedSource } from "./git.ts";
@@ -96,8 +97,10 @@ async function watchComments(gitDir: string, streams: Set<ServerResponse>): Prom
 	};
 	const watcher = watch(commentsDir(gitDir), (_event, filename) => {
 		if (filename === COMMENTS_FILE_NAME) return notify(filename, "event: comments\ndata: {}\n\n");
-		const source = OVERVIEW_FILE_PATTERN.exec(filename ?? "")?.[1];
-		if (source) notify(`overview-${source}`, `event: overview\ndata: ${JSON.stringify({ source })}\n\n`);
+		const overview = OVERVIEW_FILE_PATTERN.exec(filename ?? "")?.[1];
+		if (overview) notify(`overview-${overview}`, `event: overview\ndata: ${JSON.stringify({ source: overview })}\n\n`);
+		const guide = GUIDE_FILE_PATTERN.exec(filename ?? "")?.[1];
+		if (guide) notify(`guide-${guide}`, `event: guide\ndata: ${JSON.stringify({ source: guide })}\n\n`);
 	});
 	const stop = (): void => {
 		for (const timer of timers.values()) clearTimeout(timer);
@@ -120,6 +123,7 @@ async function route(req: IncomingMessage, res: ServerResponse, context: Context
 	if (pathname === "/api/events") return openEventStream(req, res, context);
 	if (pathname === "/api/comments") return sendJson(res, 200, { comments: await readComments(context.gitDir) });
 	if (pathname === "/api/overview") return sendOverview(res, context.gitDir, url);
+	if (pathname === "/api/guide") return sendGuide(res, context.gitDir, url);
 	if (pathname === "/api/sources") return sendJson(res, 200, await readSources(root));
 	if (pathname === "/api/files") return sendFiles(res, root, url, sources);
 	if (pathname === "/api/file") return sendFile(res, root, url, sources);
@@ -136,11 +140,11 @@ async function sendFiles(
 	if (!SOURCE_PATTERN.test(source)) return sendJson(res, 400, { error: "bad source" });
 	const cached = sources.get(source);
 	if (cached && source.startsWith("pr-") && url.searchParams.get("refresh") !== "1") {
-		return sendJson(res, 200, { files: cached.files, pr: cached.pr });
+		return sendJson(res, 200, { files: cached.files, pr: cached.pr, head: cached.head });
 	}
 	const resolved = await resolveSource(root, source);
 	sources.set(source, resolved);
-	sendJson(res, 200, { files: resolved.files, pr: resolved.pr });
+	sendJson(res, 200, { files: resolved.files, pr: resolved.pr, head: resolved.head });
 }
 
 async function sendFile(
@@ -161,6 +165,12 @@ async function sendOverview(res: ServerResponse, gitDir: string, url: URL): Prom
 	const source = url.searchParams.get("source") ?? "";
 	if (!SOURCE_PATTERN.test(source)) return sendJson(res, 400, { error: "bad source" });
 	sendJson(res, 200, { html: await readOverview(gitDir, source) });
+}
+
+async function sendGuide(res: ServerResponse, gitDir: string, url: URL): Promise<void> {
+	const source = url.searchParams.get("source") ?? "";
+	if (!SOURCE_PATTERN.test(source)) return sendJson(res, 400, { error: "bad source" });
+	sendJson(res, 200, { guide: await readGuide(gitDir, source) });
 }
 
 async function removeComment(res: ServerResponse, gitDir: string, url: URL): Promise<void> {

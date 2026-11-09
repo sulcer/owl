@@ -10,17 +10,25 @@ export interface HeaderInfo {
 	fileIndex: number;
 	fileCount: number;
 	overviewOpen: boolean;
+	guideStop: { index: number; count: number } | null;
 }
 
-export interface OverviewRow {
+export interface HeadRow {
 	selected: boolean;
 	subtitle: string;
 }
+
+export interface GuideHead extends HeadRow {
+	stops: HTMLElement | null;
+}
+
+export const GUIDE_TREE_KEY = "\0guide";
 
 export interface TreeHandlers {
 	onFile: (path: string) => void;
 	onToggle: (folderPath: string) => void;
 	onOverview: () => void;
+	onGuide: () => void;
 }
 
 const INDENT_PX = 14;
@@ -57,11 +65,14 @@ export function renderTree(
 	collapsed: Set<string>,
 	commentCounts: ReadonlyMap<string, number>,
 	commentKinds: ReadonlyMap<string, ReviewKind>,
-	overview: OverviewRow | null,
+	heads: { overview: HeadRow | null; guide: GuideHead | null },
 	handlers: TreeHandlers,
 	emptyText: string
 ): void {
-	const rows: HTMLElement[] = overview ? [overviewRow(overview, handlers)] : [];
+	const rows: HTMLElement[] = [];
+	if (heads.overview) rows.push(overviewRow(heads.overview, handlers));
+	if (heads.guide) rows.push(guideRow(heads.guide, handlers));
+	if (heads.guide?.stops) rows.push(heads.guide.stops);
 	if (nodes.length === 0) return container.replaceChildren(...rows, element("div", "item muted", emptyText));
 	appendRows(rows, nodes, 0, selectedPath, collapsed, commentCounts, commentKinds, handlers);
 	container.replaceChildren(...rows);
@@ -71,8 +82,11 @@ export function renderTree(
 export function renderHeader(container: HTMLElement, info: HeaderInfo): void {
 	const { detail, pr } = info;
 	const lines: HTMLElement[] = [];
-	if (info.overviewOpen) lines.push(overviewTitleLine());
-	else if (detail) lines.push(pathLine(detail, info));
+	if (info.overviewOpen) lines.push(titleLine("Overview"));
+	else if (info.guideStop) {
+		const { index, count } = info.guideStop;
+		lines.push(titleLine("Guide", index < count ? `stop ${index + 1} of ${count}` : "not on the tour"));
+	} else if (detail) lines.push(pathLine(detail, info));
 	if (pr) lines.push(prLine(pr));
 	container.replaceChildren(...lines);
 }
@@ -163,7 +177,7 @@ function fileRow(
 	return row;
 }
 
-function overviewRow(info: OverviewRow, handlers: TreeHandlers): HTMLElement {
+function overviewRow(info: HeadRow, handlers: TreeHandlers): HTMLElement {
 	const row = element("div", `row-tree overview-row${info.selected ? " selected" : ""}`);
 	const icon = document.createElement("img");
 	icon.src = "/client/owl.svg";
@@ -171,6 +185,24 @@ function overviewRow(info: OverviewRow, handlers: TreeHandlers): HTMLElement {
 	row.append(icon, element("span", "", "Overview"));
 	if (info.subtitle) row.append(element("span", "muted", info.subtitle));
 	row.onclick = handlers.onOverview;
+	return row;
+}
+
+function guideRow(info: GuideHead, handlers: TreeHandlers): HTMLElement {
+	const row = element("div", `row-tree overview-row guide-row${info.selected ? " selected" : ""}`);
+	const toggle = document.createElement("button");
+	toggle.type = "button";
+	toggle.className = "guide-toggle";
+	toggle.textContent = info.stops ? "▾" : "▸";
+	toggle.title = info.stops ? "hide the stops" : "show the stops";
+	toggle.setAttribute("aria-expanded", String(info.stops !== null));
+	toggle.onclick = (event) => {
+		event.stopPropagation();
+		handlers.onToggle(GUIDE_TREE_KEY);
+	};
+	row.append(toggle, element("span", "guide-icon", "☰"), element("span", "", "Guide"));
+	if (info.subtitle) row.append(element("span", "muted", info.subtitle));
+	row.onclick = handlers.onGuide;
 	return row;
 }
 
@@ -198,9 +230,10 @@ function pathLine(detail: FileDetail, info: HeaderInfo): HTMLElement {
 	return line;
 }
 
-function overviewTitleLine(): HTMLElement {
+function titleLine(title: string, info = ""): HTMLElement {
 	const line = element("div", "");
-	line.append(element("strong", "", "Overview"));
+	if (info) line.append(element("span", "info", info));
+	line.append(element("strong", "", title));
 	return line;
 }
 

@@ -259,11 +259,6 @@ body {
 .ov .card p {
 	font-size: 12.5px;
 }
-.note {
-	padding: 4px 12px;
-	border-left: 3px solid var(--comment);
-	background: rgb(226 185 61 / 0.06);
-}
 .code {
 	margin-top: 8px;
 }
@@ -304,47 +299,6 @@ body {
 	outline: none;
 }
 
-.kind {
-	padding: 0 6px;
-	border-radius: 3px;
-	font-size: 10.5px;
-	font-weight: 600;
-	text-transform: uppercase;
-	letter-spacing: 0.03em;
-}
-.kind.fix {
-	background: #5b2f2f;
-	color: #f0b3b3;
-}
-.kind.question {
-	background: #2a3550;
-	color: #b7c7ee;
-}
-.kind.nit {
-	background: #3a3d3f;
-	color: #a8a8a8;
-}
-.badge {
-	display: inline-block;
-	min-width: 14px;
-	height: 14px;
-	margin-left: 6px;
-	border-radius: 7px;
-	font:
-		600 10px/14px system-ui,
-		sans-serif;
-	text-align: center;
-	color: var(--bg);
-}
-.badge.fix {
-	background: #e06c6c;
-}
-.badge.question {
-	background: #6f9be8;
-}
-.badge.nit {
-	background: #8c8c8c;
-}
 .review-line {
 	display: flex;
 	align-items: center;

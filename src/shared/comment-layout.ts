@@ -1,7 +1,10 @@
 import type { Comment } from "../comments.ts";
 import { REVIEW_KINDS } from "./reviewKinds.ts";
 import type { ReviewKind } from "./reviewKinds.ts";
+import { touchesChunk } from "./diff.ts";
 import type { Chunk } from "./diff.ts";
+
+export type CardComment = Comment & { byline?: string };
 
 export interface CommentGroup {
 	line: number;
@@ -84,10 +87,7 @@ export function describeLines({ start, end }: Comment): string {
 }
 
 export function commentForChunk(comments: Comment[], chunk: Chunk): Comment | undefined {
-	const touching = (comment: Comment): boolean => {
-		const [first, last] = comment.side === "new" ? [chunk.newStart, chunk.newEnd] : [chunk.oldStart, chunk.oldEnd];
-		return comment.start <= Math.max(last, first + 1) && comment.end >= first + 1;
-	};
+	const touching = (comment: Comment): boolean => touchesChunk(chunk, comment.side, comment.start, comment.end);
 	const bySide = (side: Comment["side"]): Comment[] =>
 		comments.filter((comment) => comment.side === side && touching(comment)).sort((a, b) => a.start - b.start);
 	return [...bySide("new"), ...bySide("old")][0];

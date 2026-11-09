@@ -27,7 +27,11 @@ export async function writeOverview(gitDir: string, source: string, html: string
 }
 
 export async function clearOverview(gitDir: string, source: string): Promise<boolean> {
-	if ((await readOverview(gitDir, source)) === null) return false;
-	await rm(overviewPath(gitDir, source), { force: true });
-	return true;
+	try {
+		await rm(overviewPath(gitDir, source));
+		return true;
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+		throw error;
+	}
 }

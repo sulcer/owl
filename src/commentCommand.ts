@@ -1,5 +1,6 @@
 import { REVIEW_KINDS } from "./shared/reviewKinds.ts";
-import { addComments, clearComments, readComments, removeComments } from "./comments.ts";
+import { addComments, clearComments, parsePath, readComments, removeComments } from "./comments.ts";
+import { parseSource } from "./viewArgs.ts";
 import type { Comment, CommentDraft, CommentMatch, ReviewKind } from "./comments.ts";
 
 export type CommentCommand =
@@ -14,7 +15,6 @@ type Anchor = Omit<CommentDraft, "text">;
 const FLAGS = new Set(["--branch", "--old", "--batch", "--clear", "--all", "--list", "--remove"]);
 const MODE_FLAGS = ["--batch", "--clear", "--list", "--remove"];
 const MAX_LIST_TEXT_CHARS = 80;
-const PR_PATTERN = /^\d{1,7}$/;
 const LINES_PATTERN = /^(\d+)(?:-(\d+))?$/;
 const MAX_TEXT_CHARS = 20_000;
 
@@ -112,15 +112,6 @@ function parseAdd(flags: Set<string>, positional: string[], reviewKind?: ReviewK
 	return reviewKind ? { kind: "add", source, anchor, text, reviewKind } : { kind: "add", source, anchor, text };
 }
 
-export function parseSource(flags: Set<string>, pr: string | undefined): string {
-	if (flags.has("--branch") && pr !== undefined) throw new Error("use either --branch or a PR number, not both");
-	if (pr !== undefined) {
-		if (!PR_PATTERN.test(pr)) throw new Error(`bad PR number: ${pr}`);
-		return `pr-${Number(pr)}`;
-	}
-	return flags.has("--branch") ? "branch" : "working";
-}
-
 function parseBatchItem(item: unknown): CommentDraft {
 	if (typeof item !== "object" || item === null) throw new Error("must be an object");
 	const { path, lines, old, text, kind } = item as Record<string, unknown>;
@@ -130,14 +121,6 @@ function parseBatchItem(item: unknown): CommentDraft {
 	if (typeof text !== "string") throw new Error("text must be a string");
 	const draft = { ...parseAnchor(path, lines, old === true), text: parseText(text) };
 	return kind === undefined ? draft : { ...draft, kind: parseKind(kind) };
-}
-
-function parsePath(rawPath: string): string {
-	const path = rawPath.startsWith("./") ? rawPath.slice(2) : rawPath;
-	if (path === "") throw new Error("path is empty");
-	if (path.startsWith("/")) throw new Error(`path must be relative: ${path}`);
-	if (path.split("/").includes("..")) throw new Error(`path must not contain "..": ${path}`);
-	return path;
 }
 
 function parseAnchor(rawPath: string, lines: string, old: boolean): Anchor {

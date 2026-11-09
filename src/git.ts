@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { lstat, readFile, readlink } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { promisify } from "node:util";
-import { addWordDiffs, parseHunks } from "./shared/diff.ts";
+import { addWordDiffs, lineCount, parseHunks } from "./shared/diff.ts";
 import type { Chunk } from "./shared/diff.ts";
 
 export type FileStatus = "added" | "modified" | "deleted" | "renamed";
@@ -11,6 +11,8 @@ export interface ChangedFile {
 	path: string;
 	oldPath?: string;
 	status: FileStatus;
+	additions?: number;
+	deletions?: number;
 }
 
 export interface PrInfo {
@@ -23,6 +25,7 @@ export interface PrInfo {
 export interface ResolvedSource {
 	oldRef: string;
 	newRef: string | null;
+	head: string;
 	files: ChangedFile[];
 	pr?: PrInfo;
 	commitCount?: number;
@@ -79,8 +82,8 @@ const MAX_BUFFER = 512 * 1024 * 1024;
 const DIFF_FLAGS = ["--no-color", "--no-ext-diff", "--no-textconv"];
 const BINARY_SNIFF_CHARS = 8192;
 // ponytail: 1 MB / 20k lines ceiling, no virtual scrolling in the page yet
-const MAX_FILE_CHARS = 1024 * 1024;
-const MAX_FILE_LINES = 20000;
+export const MAX_FILE_CHARS = 1024 * 1024;
+export const MAX_FILE_LINES = 20000;
 const STATUS_BY_CODE: Record<string, FileStatus> = { A: "added", M: "modified", D: "deleted", R: "renamed" };
 
 async function run(command: string, args: string[], cwd: string): Promise<string> {
@@ -123,7 +126,9 @@ export async function readSources(root: string): Promise<Sources> {
 		repo: basename(root),
 		branch: (await git(root, ["branch", "--show-current"])).trim(),
 		defaultBranch: target === null ? null : target.replace(/^origin\//, ""),
-		working: { fileCount: (await resolveWorking(root)).files.length },
+		working: await listWorking(root).then((listed) => ({
+			fileCount: listed.tracked.length + listed.untracked.length
+		})),
 		branchView: await summarizeBranch(root),
 		...(await prs)
 	};
@@ -134,8 +139,8 @@ export async function readFileDetail(root: string, source: ResolvedSource, file:
 	const oldText = file.status === "added" ? "" : await git(root, ["show", `${source.oldRef}:${head.oldPath}`]);
 	const newText = await readNewText(root, source, file);
 	if (isBinary(oldText) || isBinary(newText)) return { ...head, binary: true };
-	const oldLines = countLines(oldText);
-	const newLines = countLines(newText);
+	const oldLines = lineCount(oldText);
+	const newLines = lineCount(newText);
 	if (isTooLarge(oldText, oldLines) || isTooLarge(newText, newLines))
 		return { ...head, tooLarge: { oldLines, newLines } };
 	const chunks = await readChunks(root, source, head, oldLines, newLines);
@@ -143,13 +148,54 @@ export async function readFileDetail(root: string, source: ResolvedSource, file:
 }
 
 async function resolveWorking(root: string): Promise<ResolvedSource> {
-	const tracked = parseNameStatus(await git(root, ["diff", ...DIFF_FLAGS, "--name-status", "-z", "-M", "HEAD"]));
-	const untrackedOutput = await git(root, ["ls-files", "--others", "--exclude-standard", "-z"]);
-	const untracked = untrackedOutput
-		.split("\0")
-		.filter((path) => path !== "")
-		.map((path): ChangedFile => ({ path, status: "added" }));
-	return { oldRef: "HEAD", newRef: null, files: [...tracked, ...untracked] };
+	const [{ tracked, untracked }, counts, head] = await Promise.all([
+		listWorking(root),
+		git(root, ["diff", ...DIFF_FLAGS, "--numstat", "-z", "-M", "HEAD"]).then(parseNumstat),
+		git(root, ["rev-parse", "HEAD"])
+	]);
+	return {
+		oldRef: "HEAD",
+		newRef: null,
+		head: head.trim(),
+		files: [
+			...tracked.map((file) => ({ ...file, ...counts.get(file.path) })),
+			...(await Promise.all(untracked.map((file) => untrackedFile(root, file))))
+		]
+	};
+}
+
+async function listWorking(root: string): Promise<{ tracked: ChangedFile[]; untracked: ChangedFile[] }> {
+	const [tracked, untracked] = await Promise.all([
+		git(root, ["diff", ...DIFF_FLAGS, "--name-status", "-z", "-M", "HEAD"]),
+		git(root, ["ls-files", "--others", "--exclude-standard", "-z"])
+	]);
+	return {
+		tracked: parseNameStatus(tracked),
+		untracked: untracked
+			.split("\0")
+			.filter((path) => path !== "")
+			.map((path): ChangedFile => ({ path, status: "added" }))
+	};
+}
+
+// An untracked path git lists but owl can't read (a nested repo shows as a directory) keeps no counts, and so does
+// one too big to ever show: above 3 bytes per character it is past MAX_FILE_CHARS whatever its encoding.
+async function untrackedFile(root: string, file: ChangedFile): Promise<ChangedFile> {
+	try {
+		if ((await lstat(join(root, file.path))).size > 3 * MAX_FILE_CHARS) return file;
+		const text = await readFromDisk(join(root, file.path));
+		return isBinary(text) ? file : { ...file, additions: lineCount(text), deletions: 0 };
+	} catch {
+		return file;
+	}
+}
+
+async function listChanges(root: string, revs: string[]): Promise<ChangedFile[]> {
+	const [names, counts] = await Promise.all([
+		git(root, ["diff", ...DIFF_FLAGS, "--name-status", "-z", "-M", ...revs]),
+		git(root, ["diff", ...DIFF_FLAGS, "--numstat", "-z", "-M", ...revs]).then(parseNumstat)
+	]);
+	return parseNameStatus(names).map((file) => ({ ...file, ...counts.get(file.path) }));
 }
 
 async function resolveBranch(root: string): Promise<ResolvedSource> {
@@ -172,9 +218,8 @@ async function resolvePr(root: string, number: number): Promise<ResolvedSource> 
 
 async function resolveRange(root: string, target: string, head: string): Promise<ResolvedSource> {
 	const base = (await git(root, ["merge-base", target, head])).trim();
-	if (base === head) return { oldRef: base, newRef: head, files: [] };
-	const output = await git(root, ["diff", ...DIFF_FLAGS, "--name-status", "-z", "-M", base, head]);
-	return { oldRef: base, newRef: head, files: parseNameStatus(output) };
+	if (base === head) return { oldRef: base, newRef: head, head, files: [] };
+	return { oldRef: base, newRef: head, head, files: await listChanges(root, [base, head]) };
 }
 
 async function findTargetBranch(root: string): Promise<string | null> {
@@ -232,6 +277,22 @@ function parseNameStatus(output: string): ChangedFile[] {
 	return files;
 }
 
+function parseNumstat(output: string): Map<string, { additions: number; deletions: number }> {
+	const parts = output.split("\0");
+	const counts = new Map<string, { additions: number; deletions: number }>();
+	let index = 0;
+	while (index < parts.length && parts[index] !== "") {
+		const [added, deleted, inlinePath] = parts[index++].split("\t");
+		let path = inlinePath;
+		if (path === "") {
+			index++;
+			path = parts[index++];
+		}
+		if (added !== "-") counts.set(path, { additions: Number(added), deletions: Number(deleted) });
+	}
+	return counts;
+}
+
 async function readNewText(root: string, source: ResolvedSource, file: ChangedFile): Promise<string> {
 	if (file.status === "deleted") return "";
 	if (source.newRef === null) return readFromDisk(join(root, file.path));
@@ -270,12 +331,6 @@ function isBinary(text: string): boolean {
 
 function isTooLarge(text: string, lines: number): boolean {
 	return text.length > MAX_FILE_CHARS || lines > MAX_FILE_LINES;
-}
-
-function countLines(text: string): number {
-	if (text === "") return 0;
-	const parts = text.split("\n").length;
-	return text.endsWith("\n") ? parts - 1 : parts;
 }
 
 function errorMessage(error: unknown): string {
