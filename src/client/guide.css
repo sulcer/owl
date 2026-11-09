@@ -1,0 +1,465 @@
+#guide {
+	flex: 1;
+	min-height: 0;
+	display: flex;
+}
+
+/* The stop list sits in the sidebar's file tree, under the Guide row. */
+.guide-stops {
+	padding: 0 6px 6px 22px;
+	white-space: normal;
+}
+
+.guide-stops .read-count {
+	padding: 2px 6px 4px;
+	color: var(--muted);
+	font-size: 11px;
+}
+
+.guide-stops .stop-row {
+	display: flex;
+	gap: 7px;
+	width: 100%;
+	padding: 4px 6px;
+	border: 0;
+	border-radius: 3px;
+	background: none;
+	color: var(--text);
+	font: inherit;
+	font-size: 12.5px;
+	text-align: left;
+	cursor: pointer;
+}
+
+.guide-stops .stop-row:hover {
+	background: rgb(255 255 255 / 0.05);
+}
+
+.guide-stops .stop-row.selected {
+	background: var(--selection);
+}
+
+.guide-stops .bullet {
+	flex: none;
+	display: inline-grid;
+	place-items: center;
+	width: 17px;
+	height: 17px;
+	margin-top: 1px;
+	border: 1px solid var(--border);
+	border-radius: 50%;
+	color: var(--muted);
+	font-size: 10px;
+}
+
+.guide-stops .stop-row.read .bullet {
+	border-color: rgb(var(--added-rgb));
+	color: rgb(var(--added-rgb));
+}
+
+.guide-stops .title {
+	line-height: 1.35;
+}
+
+.guide-stops .stop-row.selected .title {
+	color: var(--bright);
+}
+
+.guide-stops .meta {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px;
+	margin-top: 2px;
+	color: var(--muted);
+	font-size: 11px;
+}
+
+.guide-stops .off-tour {
+	margin-top: 4px;
+}
+
+.guide-toggle {
+	display: inline-block;
+	width: 12px;
+	margin-right: 2px;
+	padding: 0;
+	border: 0;
+	background: none;
+	color: var(--muted);
+	font: inherit;
+	cursor: pointer;
+}
+
+.kind.look {
+	background: rgb(226 185 61 / 0.18);
+	color: var(--comment);
+}
+
+#guide .stop-pane {
+	flex: 1;
+	min-width: 0;
+	overflow: auto;
+}
+
+#guide .stop {
+	max-width: 900px;
+	margin: 0 auto;
+	padding: 16px 28px 60px;
+}
+
+#guide .stop-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	color: var(--muted);
+	font-size: 12px;
+}
+
+#guide .buttons {
+	display: flex;
+	gap: 4px;
+}
+
+#guide button.icon,
+#guide button.next {
+	padding: 2px 9px;
+	border: 1px solid var(--border);
+	border-radius: 3px;
+	background: var(--panel);
+	color: var(--text);
+	font: inherit;
+	cursor: pointer;
+}
+
+#guide button.icon:disabled {
+	opacity: 0.4;
+	cursor: default;
+}
+
+#guide button.icon:not(:disabled):hover,
+#guide button.next:hover {
+	border-color: var(--comment);
+	color: var(--bright);
+}
+
+#guide h1 {
+	margin: 10px 0 6px;
+	font-size: 19px;
+	font-weight: 600;
+	color: var(--bright);
+}
+
+#guide h2 {
+	margin: 18px 0 6px;
+	color: var(--muted);
+	font-size: 11px;
+	font-weight: 600;
+	text-transform: uppercase;
+}
+
+#guide p {
+	margin: 6px 0;
+	line-height: 1.55;
+}
+
+#guide .summary {
+	font-size: 13.5px;
+}
+
+#guide code {
+	padding: 0 4px;
+	border-radius: 3px;
+	background: #3a3d3f;
+	font:
+		12px ui-monospace,
+		"JetBrains Mono",
+		monospace;
+}
+
+#guide .attention {
+	margin: 12px 0;
+	padding: 8px 12px;
+}
+
+#guide .attention-title {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	color: var(--bright);
+}
+
+#guide .excerpts {
+	display: flex;
+	flex-direction: column;
+	gap: 14px;
+	margin-top: 14px;
+}
+
+#guide figure {
+	margin: 0;
+}
+
+#guide figcaption {
+	margin-bottom: 4px;
+	color: var(--muted);
+	font-size: 12px;
+}
+
+#guide .code-link {
+	padding: 1px 7px;
+	border: 1px solid var(--border);
+	border-radius: 3px;
+	background: var(--bg);
+	color: #9aa7b4;
+	font:
+		11.5px ui-monospace,
+		monospace;
+	cursor: pointer;
+}
+
+#guide .code-link::before {
+	content: "</> ";
+	color: var(--comment);
+}
+
+#guide .code-link:hover {
+	border-color: var(--comment);
+	color: var(--bright);
+}
+
+#guide .guide-notes {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+#guide .note-head {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+#guide .note-head .code-link {
+	margin-left: auto;
+}
+
+#guide .note-marker {
+	flex: none;
+	display: inline-grid;
+	place-items: center;
+	width: 18px;
+	height: 18px;
+	border-radius: 50%;
+	background: var(--comment);
+	color: #1e1e1e;
+	font-size: 10px;
+	font-weight: 700;
+}
+
+#guide .note-body {
+	margin-left: 26px;
+}
+
+#guide .file-list {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	border: 1px solid var(--border);
+	border-radius: 4px;
+}
+
+#guide .file-list li + li {
+	border-top: 1px solid var(--border);
+}
+
+#guide .file-row {
+	display: flex;
+	align-items: baseline;
+	gap: 10px;
+	width: 100%;
+	padding: 6px 10px;
+	border: 0;
+	background: none;
+	color: var(--text);
+	font: inherit;
+	text-align: left;
+	cursor: pointer;
+}
+
+#guide .file-row:hover {
+	background: rgb(255 255 255 / 0.05);
+}
+
+#guide .file-row .path {
+	flex: none;
+	font:
+		12px ui-monospace,
+		"JetBrains Mono",
+		monospace;
+}
+
+#guide .file-row .path.missing {
+	color: var(--muted);
+	text-decoration: line-through;
+}
+
+#guide .file-note {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	color: var(--muted);
+	font-size: 12px;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+#guide .added,
+#guide .removed {
+	flex: none;
+	font:
+		12px ui-monospace,
+		monospace;
+}
+
+#guide .added {
+	color: rgb(var(--added-rgb));
+}
+
+#guide .removed {
+	color: #c75450;
+}
+
+#guide .questions {
+	margin: 0;
+	padding-left: 18px;
+}
+
+#guide .questions li + li {
+	margin-top: 4px;
+}
+
+#guide .stop-foot {
+	display: flex;
+	justify-content: flex-end;
+	margin-top: 24px;
+	padding-top: 14px;
+	border-top: 1px solid var(--border);
+}
+
+#guide .empty {
+	padding: 24px;
+	color: var(--muted);
+}
+
+.guide-icon {
+	display: inline-block;
+	width: 14px;
+	margin-right: 6px;
+	color: var(--comment);
+	text-align: center;
+}
+
+#guide .excerpt-head {
+	display: flex;
+	align-items: baseline;
+	gap: 10px;
+	padding: 4px 10px;
+	border: 1px solid var(--border);
+	border-bottom: 0;
+	border-radius: 4px 4px 0 0;
+	background: var(--panel);
+	font-size: 12px;
+}
+
+#guide .excerpt-head .path {
+	color: var(--bright);
+	font:
+		12px ui-monospace,
+		"JetBrains Mono",
+		monospace;
+}
+
+#guide .excerpt-head .lines {
+	color: var(--muted);
+}
+
+#guide .excerpt-head .open {
+	margin-left: auto;
+	padding: 0;
+	border: 0;
+	background: none;
+	color: #589df6;
+	font: inherit;
+	cursor: pointer;
+}
+
+#guide .excerpt-body {
+	overflow-x: auto;
+	border: 1px solid var(--border);
+	border-radius: 0 0 4px 4px;
+	background: var(--bg);
+	color: var(--muted);
+	font-size: 12px;
+}
+
+#guide .excerpt-body:not(:has(.excerpt-code)) {
+	padding: 6px 10px;
+}
+
+#guide .excerpt-code {
+	min-width: max-content;
+	padding: 2px 0;
+	color: var(--text);
+	tab-size: 4;
+	font:
+		12px/var(--line-height) ui-monospace,
+		"JetBrains Mono",
+		"DejaVu Sans Mono",
+		monospace;
+}
+
+#guide .excerpt-code .num {
+	position: static;
+	width: 40px;
+	margin-right: 0;
+	cursor: pointer;
+}
+
+#guide .excerpt-code .num:not([data-n]) {
+	cursor: default;
+}
+
+#guide .excerpt-code .num[data-n]:hover {
+	color: var(--text);
+}
+
+#guide .excerpt-code .sign {
+	display: inline-block;
+	width: 18px;
+	color: var(--muted);
+	text-align: center;
+	user-select: none;
+}
+
+#guide .excerpt-code .note-marker {
+	width: 16px;
+	height: 16px;
+	margin-left: 10px;
+	vertical-align: 1px;
+	font:
+		700 9px/16px system-ui,
+		sans-serif;
+}
+
+#guide .stale {
+	margin-bottom: 12px;
+	padding: 8px 12px;
+}
+
+#guide button.copy {
+	margin-left: 8px;
+}

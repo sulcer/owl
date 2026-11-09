@@ -57,3 +57,19 @@ export function makeWorkingRepo(): string {
 	write(repo, "new.txt", "x\ny\n");
 	return repo;
 }
+
+export const WORKING_FILES = [
+	{ path: "del.txt", status: "deleted", additions: 0, deletions: 1 },
+	{ path: "mod.txt", status: "modified", additions: 1, deletions: 1 },
+	{ path: "new.txt", status: "added", additions: 2, deletions: 0 },
+	{ path: "renamed.txt", oldPath: "old.txt", status: "renamed", additions: 0, deletions: 0 }
+];
+
+export function errorMessage(run: () => unknown): string {
+	try {
+		run();
+		return "no error";
+	} catch (error) {
+		return (error as Error).message;
+	}
+}

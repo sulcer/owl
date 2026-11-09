@@ -4,11 +4,12 @@ import { request } from "node:http";
 import { dirname, join } from "node:path";
 import { after, before, test } from "node:test";
 import { addComments, readComments } from "../src/comments.ts";
+import { writeGuide } from "../src/guide.ts";
 import { writeOverview } from "../src/overview.ts";
 import { findGitDir } from "../src/git.ts";
 import { startServer } from "../src/server.ts";
 import type { RunningServer } from "../src/server.ts";
-import { commitAll, git, makeRepoWithOrigin, makeTempDir, makeWorkingRepo, write } from "./helpers.ts";
+import { WORKING_FILES, commitAll, git, makeRepoWithOrigin, makeTempDir, makeWorkingRepo, write } from "./helpers.ts";
 
 let running: RunningServer;
 let gitDir: string;
@@ -61,6 +62,17 @@ test("path outside the file list gets 404", async () => {
 	await get("/api/files?source=working");
 	assert.equal((await get("/api/file?source=working&path=../../etc/passwd")).status, 404);
 	assert.equal((await get("/api/file?source=working&path=nope.txt")).status, 404);
+});
+
+test("the file list carries the view's files with line counts and its head commit", async () => {
+	const actual = JSON.parse((await get("/api/files?source=working")).body) as { files: { path: string }[] };
+	assert.deepEqual(
+		{ ...actual, files: actual.files.sort((a, b) => a.path.localeCompare(b.path)) },
+		{
+			head: git(dirname(gitDir), "rev-parse", "HEAD").trim(),
+			files: WORKING_FILES
+		}
+	);
 });
 
 test("path in the file list returns its detail", async () => {
@@ -206,4 +218,34 @@ test("overview and comment writes each send their own event", async () => {
 	const actual = await received;
 	assert.match(actual, /event: overview\ndata: \{"source":"branch"\}\n\n/);
 	assert.match(actual, /event: comments\ndata: \{\}\n\n/);
+});
+
+test("GET /api/guide returns the guide, null when missing, 400 for a bad source", async () => {
+	const guide = { headSha: "abc", stops: [] };
+	await writeGuide(gitDir, "pr-9", guide);
+	assert.deepEqual(
+		[
+			JSON.parse((await get("/api/guide?source=pr-9")).body),
+			JSON.parse((await get("/api/guide?source=pr-8")).body),
+			(await get("/api/guide?source=../x")).status
+		],
+		[{ guide }, { guide: null }, 400]
+	);
+});
+
+test("a guide write sends event: guide with its source", { timeout: 5000 }, async () => {
+	const received = new Promise<string>((done, fail) => {
+		const req = request({ host: "127.0.0.1", port: running.port, path: "/api/events" }, (res) => {
+			res.on("data", (chunk: Buffer) => {
+				if (chunk.toString().includes('"pr-12"')) {
+					req.destroy();
+					done(chunk.toString());
+				}
+			});
+		});
+		req.on("error", fail);
+		req.end();
+		setTimeout(() => writeGuide(gitDir, "pr-12", { headSha: "abc", stops: [] }), 100);
+	});
+	assert.equal(await received, 'event: guide\ndata: {"source":"pr-12"}\n\n');
 });

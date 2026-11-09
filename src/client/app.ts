@@ -1,14 +1,18 @@
 import type { Comment } from "../comments.ts";
 import type { ChangedFile, FileDetail, PrInfo, Sources } from "../git.ts";
+import type { Guide } from "../guide.ts";
 import { commentForChunk, countByPath, nextCommentIndex, worstKindByPath } from "../shared/comment-layout.ts";
 import { buildTree, treeFiles } from "../shared/tree.ts";
+import { countOf, guideNoteCards, isStale } from "../shared/guide-tour.ts";
 import { createCommentLayer } from "./comments.ts";
 import { createDiffView } from "./diff-view.ts";
+import { createGuideView } from "./guide.ts";
+import type { GuideContext } from "./guide.ts";
 import { createOverviewFrame } from "./overview.ts";
 import type { OpenLink } from "./overview.ts";
 import type { ScrollPosition } from "./diff-view.ts";
 import { setupResize } from "./resize.ts";
-import { renderHeader, renderSources, renderTree, sourceIds } from "./panel.ts";
+import { GUIDE_TREE_KEY, renderHeader, renderSources, renderTree, sourceIds } from "./panel.ts";
 
 interface ApiError {
 	error: string;
@@ -17,6 +21,13 @@ interface ApiError {
 interface FilesResponse {
 	files: ChangedFile[];
 	pr?: PrInfo;
+	head?: string;
+}
+
+interface Landing {
+	file?: string;
+	overview?: boolean;
+	guideStop?: number;
 }
 
 interface OpenOptions {
@@ -64,6 +75,20 @@ const overviewFrame = createOverviewFrame(byId("overview"), {
 	onKey: (event) => handleKey(event)
 });
 
+const guideView = createGuideView(byId("guide"), {
+	onOpen: (link) => void openCodeLink(link),
+	onOpenFile: (path) => void openFile(path),
+	onStopChange: () => {
+		writeHash();
+		drawHeader();
+	},
+	onShowStop: (stop) => showGuide(stop),
+	loadFile: async (path) => {
+		const detail = await getJson<FileDetail>(`/api/file?source=${source}&path=${encodeURIComponent(path)}`);
+		return isError(detail) ? null : detail;
+	}
+});
+
 const commentLayer = createCommentLayer({
 	panes: byId("panes"),
 	scrollers: { old: byId("oldPane"), new: byId("newPane") }
@@ -83,6 +108,9 @@ let commentIndex = -1;
 let generation = 0;
 let overviewHtml: string | null = null;
 let overviewOpen = false;
+let guide: Guide | null = null;
+let guideOpen = false;
+let head = "";
 let fileScroll: ScrollPosition | undefined;
 const collapsed = new Set<string>();
 
@@ -122,7 +150,8 @@ function sourceComments(): Comment[] {
 }
 
 function drawComments(): void {
-	commentLayer.render(sourceComments().filter((comment) => comment.path === selectedPath));
+	const notes = guide === null ? [] : guideNoteCards(guide, source, new Date().toISOString());
+	commentLayer.render([...sourceComments(), ...notes].filter((comment) => comment.path === selectedPath));
 }
 
 function focusChangeComment(): void {
@@ -142,7 +171,7 @@ async function goToComment(direction: 1 | -1): Promise<void> {
 }
 
 async function openComment(target: Comment): Promise<void> {
-	if (overviewOpen || target.path !== selectedPath) await openFile(target.path);
+	if (overviewOpen || guideOpen || target.path !== selectedPath) await openFile(target.path);
 	if (target.path !== selectedPath) return;
 	commentLayer.reveal(target.id);
 	view.goToLine(target.side, target.start);
@@ -152,6 +181,8 @@ async function loadFiles(force = false): Promise<void> {
 	const response = await getJson<FilesResponse>(`/api/files?source=${source}${force ? "&refresh=1" : ""}`);
 	files = isError(response) ? [] : response.files;
 	pr = isError(response) ? undefined : response.pr;
+	head = isError(response) ? "" : (response.head ?? "");
+	guideView.setGuide(guide, guideContext());
 	filesError = isError(response) ? response.error : null;
 	drawSources();
 	drawTree();
@@ -171,7 +202,9 @@ function setOverview(html: string | null, forceRender: boolean): void {
 }
 
 async function reloadOverview(): Promise<void> {
+	const shownSource = source;
 	const html = await fetchOverview();
+	if (source !== shownSource) return;
 	const wasOpen = overviewOpen;
 	setOverview(html, false);
 	if (wasOpen && html === null) return openFirstOrPreferred();
@@ -179,15 +212,72 @@ async function reloadOverview(): Promise<void> {
 }
 
 function showOverview(): void {
-	generation++;
-	if (!overviewOpen) fileScroll = view.scrollPosition();
+	leaveFile();
 	overviewOpen = true;
-	byId("panes").hidden = true;
-	byId("note").hidden = true;
 	overviewFrame.show();
 	writeHash();
 	drawTree();
 	drawHeader();
+}
+
+function leaveFile(): void {
+	generation++;
+	if (!overviewOpen && !guideOpen) fileScroll = view.scrollPosition();
+	leaveOverview();
+	leaveGuide();
+	byId("panes").hidden = true;
+	byId("note").hidden = true;
+}
+
+async function fetchGuide(): Promise<Guide | null> {
+	const response = await getJson<{ guide: Guide | null }>(`/api/guide?source=${source}`);
+	return isError(response) ? null : response.guide;
+}
+
+function setGuide(next: Guide | null): void {
+	guide = next;
+	guideView.setGuide(next, guideContext());
+	if (next === null) leaveGuide();
+	drawTree();
+	drawComments();
+}
+
+async function reloadGuide(): Promise<void> {
+	const shownSource = source;
+	const next = await fetchGuide();
+	if (source !== shownSource) return;
+	const wasOpen = guideOpen;
+	setGuide(next);
+	if (wasOpen && next === null) return openFirstOrPreferred();
+	drawHeader();
+}
+
+function guideContext(): GuideContext {
+	let label = source === "branch" ? "the changes on this branch" : "my working changes";
+	if (pr) label = `PR #${pr.number} ${pr.title}`;
+	return { source, files, head, label };
+}
+
+function showGuide(stop?: number): void {
+	if (guide === null) return;
+	leaveFile();
+	guideOpen = true;
+	guideView.show(stop);
+	writeHash();
+	drawTree();
+	drawHeader();
+}
+
+function leaveGuide(): void {
+	guideOpen = false;
+	guideView.hide();
+}
+
+function toggleGuide(): void {
+	if (guide === null) return;
+	if (!guideOpen) return showGuide();
+	const path = selectedPath ?? files[0]?.path;
+	if (path) void openFile(path, { restore: fileScroll });
 }
 
 function leaveOverview(): void {
@@ -208,26 +298,34 @@ async function openCodeLink(link: OpenLink): Promise<void> {
 	view.goToLine(link.old ? "old" : "new", link.start);
 }
 
-async function selectSource(id: string, preferred: { file?: string; overview?: boolean } = {}): Promise<void> {
+async function selectSource(id: string, preferred: Landing = {}): Promise<void> {
 	const mine = ++generation;
 	source = id;
 	selectedPath = null;
 	commentIndex = -1;
 	syncReviews();
 	leaveOverview();
+	leaveGuide();
 	overviewHtml = null;
+	guide = null;
 	await loadFiles();
-	const html = await fetchOverview();
+	const [html, nextGuide] = await Promise.all([fetchOverview(), fetchGuide()]);
 	if (mine !== generation) return;
 	setOverview(html, true);
-	if (html !== null && (preferred.overview || !preferred.file)) return showOverview();
-	await openFirstOrPreferred(preferred.file);
+	setGuide(nextGuide);
+	if (nextGuide !== null && preferred.guideStop !== undefined) return showGuide(preferred.guideStop);
+	if (preferred.overview && html !== null) return showOverview();
+	if (preferred.file) return openFirstOrPreferred(preferred.file);
+	if (html !== null) return showOverview();
+	if (nextGuide !== null) return showGuide();
+	await openFirstOrPreferred();
 }
 
 async function openFirstOrPreferred(preferredPath?: string): Promise<void> {
 	const target = files.find((file) => file.path === preferredPath) ?? files[0];
 	if (target) return openFile(target.path);
 	leaveOverview();
+	leaveGuide();
 	selectedPath = null;
 	currentDetail = null;
 	view.showMessage(filesError ?? "No changes.");
@@ -239,6 +337,7 @@ async function openFirstOrPreferred(preferredPath?: string): Promise<void> {
 async function openFile(path: string, options: OpenOptions = {}): Promise<void> {
 	const mine = ++generation;
 	leaveOverview();
+	leaveGuide();
 	selectedPath = path;
 	expandAncestors(path);
 	drawTree();
@@ -264,13 +363,15 @@ async function refresh(forceFiles: boolean): Promise<void> {
 	await loadSources();
 	const mine = ++generation;
 	if (forceFiles || source === "working" || source === "branch") await loadFiles(forceFiles);
-	const html = await fetchOverview();
+	if (source === "working") guideView.reloadFiles();
+	const [html, nextGuide] = await Promise.all([fetchOverview(), fetchGuide()]);
 	if (mine !== generation) return;
-	const lostOverview = overviewOpen && html === null;
+	const lost = (overviewOpen && html === null) || (guideOpen && nextGuide === null);
 	setOverview(html, forceFiles);
-	if (overviewOpen) return drawHeader();
+	setGuide(nextGuide);
+	if (overviewOpen || guideOpen) return drawHeader();
 	const stillThere = files.some((file) => file.path === selectedPath);
-	if (lostOverview || !stillThere) return openFirstOrPreferred();
+	if (lost || !stillThere) return openFirstOrPreferred();
 	await openFile(selectedPath ?? "", { restore: view.scrollPosition() });
 }
 
@@ -291,6 +392,7 @@ function expandAncestors(path: string): void {
 function writeHash(): void {
 	const params = new URLSearchParams({ source });
 	if (overviewOpen) params.set("overview", "1");
+	else if (guideOpen) params.set("stop", String(guideView.stop() + 1));
 	else if (selectedPath) params.set("file", selectedPath);
 	history.replaceState(null, "", `#${params}`);
 }
@@ -307,18 +409,29 @@ function drawTree(): void {
 			if (!collapsed.delete(folder)) collapsed.add(folder);
 			drawTree();
 		},
-		onOverview: showOverview
+		onOverview: showOverview,
+		onGuide: () => showGuide()
 	};
+	const overviewSubtitle = source.startsWith("pr-") ? "what this PR does" : "";
+	const overviewRow = overviewHtml === null ? null : { selected: overviewOpen, subtitle: overviewSubtitle };
+	const staleNote = guide !== null && isStale(guide, head) ? " · stale" : "";
+	const stopsShown = !collapsed.has(GUIDE_TREE_KEY);
+	const guideRow =
+		guide === null
+			? null
+			: {
+					selected: guideOpen && !stopsShown,
+					subtitle: `${countOf(guide.stops.length, "stop")}${staleNote}`,
+					stops: stopsShown ? guideView.stopList : null
+				};
 	renderTree(
 		treeEl,
 		buildTree(matchingFiles()),
-		overviewOpen ? null : selectedPath,
+		overviewOpen || guideOpen ? null : selectedPath,
 		collapsed,
 		countByPath(comments, source),
 		worstKindByPath(comments, source),
-		overviewHtml === null
-			? null
-			: { selected: overviewOpen, subtitle: source.startsWith("pr-") ? "what this PR does" : "" },
+		{ overview: overviewRow, guide: guideRow },
 		handlers,
 		emptyText
 	);
@@ -332,7 +445,8 @@ function drawHeader(): void {
 		changeCount: view.changeCount(),
 		fileIndex: orderedFiles().findIndex((file) => file.path === selectedPath),
 		fileCount: files.length,
-		overviewOpen
+		overviewOpen,
+		guideStop: guideOpen && guide ? { index: guideView.stop(), count: guide.stops.length } : null
 	});
 }
 
@@ -343,6 +457,11 @@ function openFirstFile(): void {
 
 function stepChange(direction: 1 | -1): void {
 	if (overviewOpen) return openFirstFile();
+	if (guideOpen) {
+		const path = guideView.firstPath();
+		if (path && files.some((file) => file.path === path)) return void openFile(path);
+		return openFirstFile();
+	}
 	const next = view.currentChange() + direction;
 	if (next >= 0 && next < view.changeCount()) {
 		view.goToChange(next);
@@ -364,12 +483,20 @@ function stepReview(direction: 1 | -1): void {
 }
 
 function nextFile(): void {
-	if (overviewOpen) return openFirstFile();
+	if (overviewOpen && guide !== null) return showGuide();
+	if (guideOpen && guideView.stop() < guideView.stopCount() - 1) return guideView.step(1);
+	if (overviewOpen || guideOpen) return openFirstFile();
 	moveFile(1);
 }
 
 function previousFile(): void {
+	if (guideOpen && guideView.stop() > 0) return guideView.step(-1);
+	if (guideOpen) {
+		if (overviewHtml !== null) showOverview();
+		return;
+	}
 	const isFirstFile = orderedFiles()[0]?.path === selectedPath;
+	if (!overviewOpen && isFirstFile && guide !== null) return showGuide();
 	if (!overviewOpen && isFirstFile && overviewHtml !== null) return showOverview();
 	moveFile(-1);
 }
@@ -418,6 +545,10 @@ const KEY_ACTIONS: Record<string, () => void> = {
 	"j": nextFile,
 	"k": previousFile,
 	"o": toggleOverview,
+	"g": toggleGuide,
+	"y": () => {
+		if (guideOpen) void guideView.copyStop();
+	},
 	"J": () => moveSource(1),
 	"K": () => moveSource(-1),
 	"c": () => commentLayer.toggleCards(),
@@ -457,14 +588,20 @@ window.addEventListener("focus", () => void refresh(false));
 async function start(): Promise<void> {
 	const params = new URLSearchParams(location.hash.slice(1));
 	await Promise.all([loadSources(), loadComments()]);
+	const stop = Number(params.get("stop"));
 	await selectSource(params.get("source") ?? "working", {
 		file: params.get("file") ?? undefined,
-		overview: params.get("overview") === "1"
+		overview: params.get("overview") === "1",
+		guideStop: stop >= 1 ? stop - 1 : undefined
 	});
 }
 
 const events = new EventSource("/api/events");
 events.addEventListener("comments", () => void loadComments());
+events.addEventListener("guide", (event) => {
+	const changed = JSON.parse((event as MessageEvent<string>).data) as { source: string };
+	if (changed.source === source) void reloadGuide();
+});
 events.addEventListener("overview", (event) => {
 	const changed = JSON.parse((event as MessageEvent<string>).data) as { source: string };
 	if (changed.source === source) void reloadOverview();

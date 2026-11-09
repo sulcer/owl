@@ -26,7 +26,7 @@ const FLASH_MS = 1000;
 const NOT_IN_VIEW = "not in this view";
 
 function buildDocument(fragment: string): string {
-	return `<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="/client/overview.css"></head><body><article class="ov">${fragment}</article></body></html>`;
+	return `<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="/client/components.css"><link rel="stylesheet" href="/client/overview.css"></head><body><article class="ov">${fragment}</article></body></html>`;
 }
 
 export function createOverviewFrame(container: HTMLElement, handlers: OverviewHandlers): OverviewFrame {

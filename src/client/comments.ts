@@ -1,6 +1,6 @@
 import type { Comment } from "../comments.ts";
 import { barLines, describeLines, groupByStart, stackCards, worstKind } from "../shared/comment-layout.ts";
-import type { CommentGroup } from "../shared/comment-layout.ts";
+import type { CardComment, CommentGroup } from "../shared/comment-layout.ts";
 import { splitReviewText } from "../shared/reviewText.ts";
 import { renderMarkdown } from "../shared/markdown.ts";
 import type { ReviewKind } from "../shared/reviewKinds.ts";
@@ -15,7 +15,7 @@ export interface CommentLayerElements {
 }
 
 export interface CommentLayer {
-	render(comments: Comment[]): void;
+	render(comments: CardComment[]): void;
 	toggleCards(): void;
 	toggleStyle(): void;
 	reveal(commentId: string): void;
@@ -103,7 +103,7 @@ export function createCommentLayer(elements: CommentLayerElements): CommentLayer
 		queueLayout();
 	}
 
-	function render(comments: Comment[]): void {
+	function render(comments: CardComment[]): void {
 		for (const { side, state } of sides) {
 			renderSide(
 				state,
@@ -206,13 +206,13 @@ function createCard(group: CommentGroup, lineCount: number, onClose: (group: Com
 	return { group, endLine, card, connector };
 }
 
-function createEntry(comment: Comment, onClose: () => void): HTMLElement {
+function createEntry(comment: CardComment, onClose: () => void): HTMLElement {
 	const entry = document.createElement("div");
 	entry.className = comment.kind ? `entry kind-${comment.kind}` : "entry";
 	const head = document.createElement("div");
 	head.className = "head";
 	const label = document.createElement("span");
-	label.append(`agent · ${formatAge(comment.createdAt)} · ${describeLines(comment)}`);
+	label.append(`${comment.byline ?? "agent"} · ${formatAge(comment.createdAt)} · ${describeLines(comment)}`);
 	const remove = document.createElement("button");
 	remove.className = "del";
 	remove.title = "close";

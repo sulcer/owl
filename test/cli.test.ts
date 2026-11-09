@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import { cpSync, mkdirSync } from "node:fs";
 import { test } from "node:test";
 import { join } from "node:path";
-import { makeTempDir, makeWorkingRepo } from "./helpers.ts";
+import { git, makeTempDir, makeWorkingRepo } from "./helpers.ts";
 
 const CLI = join(import.meta.dirname, "..", "src", "cli.ts");
 
@@ -64,4 +64,16 @@ test("overview with bad args prints usage and exits 1; outside a repo says so", 
 	const outside = runCli(makeTempDir(), "overview", "--clear");
 	assert.equal(outside.status, 1);
 	assert.equal(outside.stderr, "owl: not a git repository\n");
+});
+
+test("guide writes from stdin, rejects a bad one with exit 1, then clears, in a real repo", () => {
+	const repo = makeWorkingRepo();
+	const guide = (input: string) =>
+		spawnSync("node", ["--disable-warning=ExperimentalWarning", CLI, "guide"], { cwd: repo, input, encoding: "utf8" });
+	const written = guide(JSON.stringify({ headSha: git(repo, "rev-parse", "HEAD").trim(), stops: [] }));
+	const bad = guide("{}");
+	assert.deepEqual(
+		[written.stdout, bad.status, bad.stderr, runCli(repo, "guide", "--clear").stdout],
+		["guide written: working (0 stops)\n", 1, "owl: headSha must be a non-empty string\n", "guide cleared: working\n"]
+	);
 });
